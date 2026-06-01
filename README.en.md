@@ -37,7 +37,7 @@ Automated root cause analysis for CloudWatch alarms, powered by AWS DevOps Agent
 - **Smart filtering** — `all` / `custom` selection mode, plus namespace / name pattern / tag rules
 - **Alarm aggregation** — Multiple alarms on the same resource within 2 minutes are merged into one investigation
 - **Automated RCA** — Calls AWS DevOps Agent and produces a structured report
-- **Feishu notification** — Delivers RCA results as interactive cards, with multi-webhook routing
+- **Feishu notification** — Delivers RCA results as interactive cards, with multi-group routing by namespace/tag/alarm-name
 - **Feishu chat-bot** — `@`-mention the bot in Feishu to talk to DevOps Agent
 - **One-click deploy** — Everything defined in CDK, `cdk deploy` is enough
 - **Hot-reload config** — Configuration in SSM Parameter Store, refreshed every 5 minutes

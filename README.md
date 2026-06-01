@@ -38,7 +38,7 @@
 - **智能过滤**：支持 all/custom 告警选择模式，namespace/name_pattern/tag 过滤
 - **告警聚合**：同一资源 2 分钟内的多个告警自动聚合为一次调查
 - **自动根因分析**：调用 AWS DevOps Agent 进行 RCA，生成结构化报告
-- **飞书通知**：RCA 结果以交互式卡片推送到飞书群，支持多 Webhook 路由
+- **飞书通知**：RCA 结果以交互式卡片推送到飞书群，支持按 namespace/tag/告警名 多群路由
 - **飞书 Bot 对话**：直接在飞书中 @机器人 与 DevOps Agent 对话
 - **一键部署**：全部基础设施通过 CDK 定义，`cdk deploy` 即可完成
 - **配置热加载**：SSM Parameter Store 管理配置，5 分钟自动刷新

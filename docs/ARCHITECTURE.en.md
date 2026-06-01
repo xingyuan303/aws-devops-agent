@@ -103,7 +103,7 @@ CloudWatch alarm → EventBridge → Step Functions (suspends, waits for callbac
 │       ├── feishu-notifier/          ← Render Feishu cards + HTTP POST
 │       │   ├── index.ts              (handler)
 │       │   ├── card-formatter.ts     (lark_md rendering, dual phase-1/phase-2 templates)
-│       │   ├── webhook-router.ts     (route by namespace/tag to different Feishu groups)
+│       │   ├── webhook-router.ts     (route by namespace/tag/alarm-name to different Feishu groups)
 │       │   └── sender.ts             (HTTP POST + retries + dead-letter)
 │       │
 │       └── feishu-bot/               ← ⚠ Independent feature: Feishu chat bot, decoupled from RCA
@@ -283,8 +283,8 @@ If the webhook path is confirmed stable in the future, you can delete these func
 |---|---|---|
 | RCAAnalyzer | — | `secretsmanager:GetSecretValue/DescribeSecret` (scoped to ARN), `states:SendTaskSuccess/Failure/Heartbeat`, `workflowExecutionTable:Read+Write` |
 | InvestigationEventHandler | `ListJournalRecords / GetBacklogTask / UpdateBacklogTask / ListExecutions / GetAgentSpace` | `states:SendTaskSuccess/Failure/Heartbeat`, `workflowExecutionTable:Read+Write`, `lambda:InvokeFunction` (scoped to FeishuNotifier ARN) |
-| FeishuNotifier | — | `deadLetterTable:Write` |
-| AlarmRouter | — | `workflowExecutionTable:Read+Write` |
+| FeishuNotifier | — | `deadLetterTable:Write`, `tag:GetResources` (tag routing reads resource tags) |
+| AlarmRouter | — | `workflowExecutionTable:Read+Write`, `tag:GetResources` (tag filtering reads resource tags) |
 | AlarmGrouper | — | `alarmGroupTable:Read+Write` |
 
 Every Lambda has `cloudwatch:PutMetricData` (namespace-scoped) and SSM config-parameter read.
