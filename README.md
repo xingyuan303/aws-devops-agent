@@ -395,8 +395,6 @@ aws ssm put-parameter --region us-east-1 \
 
 > tag 键不写死在代码里，只出现在规则 `pattern` 中，将来换成 `team` / `cost-center` 只需改配置。
 
-> ⚠️ **路由 tag ≠ 过滤 tag**：这里是"按资源 tag 决定卡片发哪个群"（已实现）。而 `alarmFilters` 里的 `tag` 类型是"按 dimension 决定告警要不要处理"，按**真资源 tag 过滤**仍未实装（见上一节）。
-
 #### 验证当前生效的配置
 
 ```bash

@@ -387,8 +387,6 @@ Example — send `project=abc` resource alarms to the abc group, route `teamA-*`
 
 > The tag key is not hardcoded — it only appears in the rule `pattern`, so switching to `team` / `cost-center` later is a config-only change.
 
-> ⚠️ **Routing tag ≠ filter tag**: this is "route to a group by the resource's tag" (implemented). The `tag` type under `alarmFilters` is "decide whether to process by dimension"; filtering by **real resource tags** is still not wired up (see the section above).
-
 #### Inspect the live config
 
 ```bash
