@@ -45,7 +45,7 @@ function extractAlarmFields(event: AlarmRouterInput): AlarmRouterOutput {
   const { threshold, currentValue } = extractThresholdAndValue(detail);
 
   // Build resource ARN from dimensions
-  const resourceArn = buildResourceArn(metricInfo.dimensions, accountId, region);
+  const resourceArn = buildResourceArn(metricInfo.dimensions, accountId, region, metricInfo.namespace);
 
   return {
     alarmId,
@@ -163,7 +163,8 @@ function extractThresholdAndValue(detail: AlarmRouterInput['detail']): {
 function buildResourceArn(
   dimensions: Record<string, string>,
   accountId: string,
-  region: string
+  region: string,
+  namespace: string = ''
 ): string {
   if (!dimensions || Object.keys(dimensions).length === 0) {
     return '';
@@ -212,6 +213,52 @@ function buildResourceArn(
   // SNS Topic
   if (dimensions['TopicName']) {
     return `arn:aws:sns:${region}:${accountId}:${dimensions['TopicName']}`;
+  }
+
+  // ElastiCache cluster
+  if (dimensions['CacheClusterId']) {
+    return `arn:aws:elasticache:${region}:${accountId}:cluster:${dimensions['CacheClusterId']}`;
+  }
+
+  // OpenSearch / Elasticsearch domain
+  if (dimensions['DomainName']) {
+    return `arn:aws:es:${region}:${accountId}:domain/${dimensions['DomainName']}`;
+  }
+
+  // Kinesis Data Stream
+  if (dimensions['StreamName']) {
+    return `arn:aws:kinesis:${region}:${accountId}:stream/${dimensions['StreamName']}`;
+  }
+
+  // EFS file system
+  if (dimensions['FileSystemId']) {
+    return `arn:aws:elasticfilesystem:${region}:${accountId}:file-system/${dimensions['FileSystemId']}`;
+  }
+
+  // Redshift cluster
+  if (dimensions['ClusterIdentifier']) {
+    return `arn:aws:redshift:${region}:${accountId}:cluster:${dimensions['ClusterIdentifier']}`;
+  }
+
+  // CloudFront distribution (global service — no region in ARN)
+  if (dimensions['DistributionId']) {
+    return `arn:aws:cloudfront::${accountId}:distribution/${dimensions['DistributionId']}`;
+  }
+
+  // GameLift fleet
+  if (dimensions['FleetId']) {
+    return `arn:aws:gamelift:${region}:${accountId}:fleet/${dimensions['FleetId']}`;
+  }
+
+  // Step Functions state machine — the dimension value is already the full ARN
+  if (dimensions['StateMachineArn']) {
+    return dimensions['StateMachineArn'];
+  }
+
+  // EKS cluster — gated on the AWS/EKS namespace because ClusterName alone is
+  // ambiguous with ECS (and ContainerInsights).
+  if (namespace === 'AWS/EKS' && dimensions['ClusterName']) {
+    return `arn:aws:eks:${region}:${accountId}:cluster/${dimensions['ClusterName']}`;
   }
 
   // Fallback: return empty string if no known dimension pattern matches

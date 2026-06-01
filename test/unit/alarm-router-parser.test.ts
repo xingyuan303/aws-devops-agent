@@ -326,3 +326,59 @@ describe('parseAlarmEvent', () => {
     });
   });
 });
+
+describe('buildResourceArn - additional services', () => {
+  function eventFor(namespace: string, dimensions: Record<string, string>): AlarmRouterInput {
+    return {
+      version: '0',
+      id: 'e',
+      'detail-type': 'CloudWatch Alarm State Change',
+      source: 'aws.cloudwatch',
+      account: '123456789012',
+      time: '2024-01-15T10:30:00Z',
+      region: 'us-east-1',
+      resources: ['arn:aws:cloudwatch:us-east-1:123456789012:alarm:Test'],
+      detail: {
+        alarmName: 'Test',
+        state: {
+          value: 'ALARM',
+          reason: 'x',
+          reasonData: JSON.stringify({ threshold: 1, recentDatapoints: [2] }),
+          timestamp: '2024-01-15T10:30:00Z',
+        },
+        previousState: { value: 'OK', reason: 'x', timestamp: '2024-01-15T10:25:00Z' },
+        configuration: {
+          metrics: [
+            {
+              id: 'm1',
+              metricStat: { metric: { namespace, name: 'M', dimensions }, period: 60, stat: 'Average' },
+              returnData: true,
+            },
+          ],
+        },
+      },
+    } as AlarmRouterInput;
+  }
+
+  it.each([
+    ['AWS/ElastiCache', { CacheClusterId: 'cache-1' }, 'arn:aws:elasticache:us-east-1:123456789012:cluster:cache-1'],
+    ['AWS/ES', { DomainName: 'logs' }, 'arn:aws:es:us-east-1:123456789012:domain/logs'],
+    ['AWS/Kinesis', { StreamName: 'events' }, 'arn:aws:kinesis:us-east-1:123456789012:stream/events'],
+    ['AWS/EFS', { FileSystemId: 'fs-abc' }, 'arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-abc'],
+    ['AWS/Redshift', { ClusterIdentifier: 'wh' }, 'arn:aws:redshift:us-east-1:123456789012:cluster:wh'],
+    ['AWS/CloudFront', { DistributionId: 'E123' }, 'arn:aws:cloudfront::123456789012:distribution/E123'],
+    ['AWS/GameLift', { FleetId: 'fleet-abc' }, 'arn:aws:gamelift:us-east-1:123456789012:fleet/fleet-abc'],
+    ['AWS/EKS', { ClusterName: 'prod' }, 'arn:aws:eks:us-east-1:123456789012:cluster/prod'],
+  ])('builds the resource ARN for %s', (namespace, dims, expected) => {
+    expect(parseAlarmEvent(eventFor(namespace, dims as Record<string, string>)).resourceArn).toBe(expected);
+  });
+
+  it('uses the StateMachineArn dimension value directly for Step Functions', () => {
+    const arn = 'arn:aws:states:us-east-1:123456789012:stateMachine:MySM';
+    expect(parseAlarmEvent(eventFor('AWS/States', { StateMachineArn: arn })).resourceArn).toBe(arn);
+  });
+
+  it('does not build an EKS ARN outside the AWS/EKS namespace (ECS ClusterName ambiguity)', () => {
+    expect(parseAlarmEvent(eventFor('AWS/ECS', { ClusterName: 'prod' })).resourceArn).toBe('');
+  });
+});

@@ -369,7 +369,7 @@ aws ssm put-parameter --region us-east-1 \
 |---|---|---|
 | `namespace` | 告警的指标 namespace **完全相等** | `"AWS/EC2"` |
 | `name_pattern` | 告警名按 **正则** 匹配 | `"^prod-.*"` |
-| `tag` | 告警**资源的 AWS tag**（`key=value` 完全相等）。仅当配置里存在 tag 过滤规则时，alarm-router 才调用 `tag:GetResources` 拉取资源 tag（无 tag 规则则**零额外 API 调用**）。支持 alarm-router 能拼出 ARN 的服务（EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS）| `"env=production"` |
+| `tag` | 告警**资源的 AWS tag**（`key=value` 完全相等）。仅当配置里存在 tag 过滤规则时，alarm-router 才调用 `tag:GetResources` 拉取资源 tag（无 tag 规则则**零额外 API 调用**）。支持 alarm-router 能拼出 ARN 的服务（EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS/ElastiCache/OpenSearch/Kinesis/EFS/Redshift/CloudFront/GameLift/Step Functions/EKS）| `"env=production"` |
 
 | action | 行为 |
 |---|---|
@@ -392,7 +392,7 @@ aws ssm put-parameter --region us-east-1 \
 
 `match` 可选 `equals` / `contains` / `regex`。
 
-**tag 路由**：发卡片前，用告警资源的 ARN 调 `tag:GetResources` 拉取资源 tag 来匹配。支持 alarm-router 能拼出 ARN 的服务（EC2、RDS、Lambda、ELB、SQS、DynamoDB、S3、ECS、SNS）；拿不到 tag 时回退到 namespace 规则 / catch-all。需要 FeishuNotifier 具备 `tag:GetResources` 权限（CDK 已自动授予）。
+**tag 路由**：发卡片前，用告警资源的 ARN 调 `tag:GetResources` 拉取资源 tag 来匹配。支持 alarm-router 能拼出 ARN 的服务（EC2、RDS、Lambda、ELB、SQS、DynamoDB、S3、ECS、SNS、ElastiCache、OpenSearch、Kinesis、EFS、Redshift、CloudFront、GameLift、Step Functions、EKS）；拿不到 tag 时回退到 namespace 规则 / catch-all。需要 FeishuNotifier 具备 `tag:GetResources` 权限（CDK 已自动授予）。
 
 示例 —— 把打了 `project=abc` 的资源告警发到 abc 群，按命名规范把 `teamA-*` 发到 A 组群，其余进默认群：
 

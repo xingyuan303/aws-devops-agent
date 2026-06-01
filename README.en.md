@@ -361,7 +361,7 @@ Each rule in `alarmFilters[]` has three fields: `type` / `value` / `action`.
 |---|---|---|
 | `namespace` | Exact match on alarm metric namespace | `"AWS/EC2"` |
 | `name_pattern` | **Regex** match on alarm name | `"^prod-.*"` |
-| `tag` | The alarmed **resource's AWS tag** (`key=value`, exact match). alarm-router calls `tag:GetResources` to fetch tags **only when a tag filter rule exists** (no tag rules → zero extra API calls). Works for services whose ARN alarm-router can build (EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS) | `"env=production"` |
+| `tag` | The alarmed **resource's AWS tag** (`key=value`, exact match). alarm-router calls `tag:GetResources` to fetch tags **only when a tag filter rule exists** (no tag rules → zero extra API calls). Works for services whose ARN alarm-router can build (EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS/ElastiCache/OpenSearch/Kinesis/EFS/Redshift/CloudFront/GameLift/Step Functions/EKS) | `"env=production"` |
 
 | action | Behavior |
 |---|---|
@@ -384,7 +384,7 @@ Each rule has three fields — `field` / `pattern` / `match`:
 
 `match` is one of `equals` / `contains` / `regex`.
 
-**Tag routing**: before sending, the resource's tags are looked up via `tag:GetResources` using the ARN that alarm-router already builds. Works for any service whose ARN alarm-router can build (EC2, RDS, Lambda, ELB, SQS, DynamoDB, S3, ECS, SNS); if no tags are found it falls back to namespace rules / catch-all. Requires the FeishuNotifier to have `tag:GetResources` (granted automatically by the CDK stack).
+**Tag routing**: before sending, the resource's tags are looked up via `tag:GetResources` using the ARN that alarm-router already builds. Works for any service whose ARN alarm-router can build (EC2, RDS, Lambda, ELB, SQS, DynamoDB, S3, ECS, SNS, ElastiCache, OpenSearch, Kinesis, EFS, Redshift, CloudFront, GameLift, Step Functions, EKS); if no tags are found it falls back to namespace rules / catch-all. Requires the FeishuNotifier to have `tag:GetResources` (granted automatically by the CDK stack).
 
 Example — send `project=abc` resource alarms to the abc group, route `teamA-*` by name to team A, everything else to the default group:
 
