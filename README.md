@@ -365,6 +365,38 @@ aws ssm put-parameter --region us-east-1 \
 
 **优先级**：`exclude` 优先于 `include`（命中任何 exclude 立即拒绝，不再检查 include）。`alarmSelectionMode='custom'` 优先于 `alarmFilters`（不在白名单的告警直接拒绝，不进 filter 阶段）。
 
+#### Webhook 路由分群（namespace / tag / 告警名）
+
+`feishuWebhooks[]` 里每个群可带 `routingRules[]`，决定该群收哪些告警的卡片。一条告警会发给**所有命中的群**；`routingRules: []` 表示 catch-all（收全部）；若没有任何群命中，则广播给所有群（兜底，避免丢卡片）。
+
+每条规则三个字段 `field` / `pattern` / `match`：
+
+| field | 匹配对象 | pattern 形态举例 |
+|---|---|---|
+| `namespace` | 告警指标 namespace | `"AWS/RDS"` |
+| `alarmName` | 告警名 | `"^teamA-"`（配 `regex`）|
+| `tag` | **资源的 AWS tag**（`key=value`）| `"project=abc"` |
+
+`match` 可选 `equals` / `contains` / `regex`。
+
+**tag 路由**：发卡片前，用告警资源的 ARN 调 `tag:GetResources` 拉取资源 tag 来匹配。支持 alarm-router 能拼出 ARN 的服务（EC2、RDS、Lambda、ELB、SQS、DynamoDB、S3、ECS、SNS）；拿不到 tag 时回退到 namespace 规则 / catch-all。需要 FeishuNotifier 具备 `tag:GetResources` 权限（CDK 已自动授予）。
+
+示例 —— 把打了 `project=abc` 的资源告警发到 abc 群，按命名规范把 `teamA-*` 发到 A 组群，其余进默认群：
+
+```json
+"feishuWebhooks": [
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<abc>", "name": "abc项目",
+    "routingRules": [ { "field": "tag", "pattern": "project=abc", "match": "equals" } ] },
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<teamA>", "name": "A组",
+    "routingRules": [ { "field": "alarmName", "pattern": "^teamA-", "match": "regex" } ] },
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<default>", "name": "默认群", "routingRules": [] }
+]
+```
+
+> tag 键不写死在代码里，只出现在规则 `pattern` 中，将来换成 `team` / `cost-center` 只需改配置。
+
+> ⚠️ **路由 tag ≠ 过滤 tag**：这里是"按资源 tag 决定卡片发哪个群"（已实现）。而 `alarmFilters` 里的 `tag` 类型是"按 dimension 决定告警要不要处理"，按**真资源 tag 过滤**仍未实装（见上一节）。
+
 #### 验证当前生效的配置
 
 ```bash

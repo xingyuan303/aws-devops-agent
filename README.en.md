@@ -357,6 +357,38 @@ Each rule in `alarmFilters[]` has three fields: `type` / `value` / `action`.
 
 **Precedence**: `exclude` beats `include` (any exclude hit rejects immediately, includes are not consulted). `alarmSelectionMode='custom'` beats `alarmFilters` (alarms not on the whitelist are rejected before filters run).
 
+#### Webhook routing (namespace / tag / alarm name)
+
+Each webhook in `feishuWebhooks[]` can carry `routingRules[]` that decide which alarms' cards it receives. An alarm is sent to **every** matching webhook; `routingRules: []` is a catch-all (receives everything); if no webhook matches, the card is broadcast to all webhooks (a safety net so cards are never dropped).
+
+Each rule has three fields — `field` / `pattern` / `match`:
+
+| field | Matches against | Example pattern |
+|---|---|---|
+| `namespace` | Alarm metric namespace | `"AWS/RDS"` |
+| `alarmName` | Alarm name | `"^teamA-"` (with `regex`) |
+| `tag` | The **resource's AWS tag** (`key=value`) | `"project=abc"` |
+
+`match` is one of `equals` / `contains` / `regex`.
+
+**Tag routing**: before sending, the resource's tags are looked up via `tag:GetResources` using the ARN that alarm-router already builds. Works for any service whose ARN alarm-router can build (EC2, RDS, Lambda, ELB, SQS, DynamoDB, S3, ECS, SNS); if no tags are found it falls back to namespace rules / catch-all. Requires the FeishuNotifier to have `tag:GetResources` (granted automatically by the CDK stack).
+
+Example — send `project=abc` resource alarms to the abc group, route `teamA-*` by name to team A, everything else to the default group:
+
+```json
+"feishuWebhooks": [
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<abc>", "name": "abc",
+    "routingRules": [ { "field": "tag", "pattern": "project=abc", "match": "equals" } ] },
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<teamA>", "name": "Team A",
+    "routingRules": [ { "field": "alarmName", "pattern": "^teamA-", "match": "regex" } ] },
+  { "url": "https://open.feishu.cn/open-apis/bot/v2/hook/<default>", "name": "Default", "routingRules": [] }
+]
+```
+
+> The tag key is not hardcoded — it only appears in the rule `pattern`, so switching to `team` / `cost-center` later is a config-only change.
+
+> ⚠️ **Routing tag ≠ filter tag**: this is "route to a group by the resource's tag" (implemented). The `tag` type under `alarmFilters` is "decide whether to process by dimension"; filtering by **real resource tags** is still not wired up (see the section above).
+
 #### Inspect the live config
 
 ```bash
