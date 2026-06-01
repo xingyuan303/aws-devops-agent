@@ -146,8 +146,8 @@ aws secretsmanager update-secret \
 ### 步骤三：克隆代码并安装依赖
 
 ```bash
-git clone https://github.com/xitingy1123/aws-devops-agent.git
-cd aws-devops-agent
+git clone https://github.com/xingyuan303/devops-agent-feishu-integration.git
+cd devops-agent-feishu-integration
 npm install
 ```
 

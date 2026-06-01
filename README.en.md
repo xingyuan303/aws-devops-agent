@@ -138,8 +138,8 @@ aws secretsmanager create-secret \
 ### Step 3 — Clone the repo and install dependencies
 
 ```bash
-git clone https://github.com/xitingy1123/aws-devops-agent.git
-cd aws-devops-agent
+git clone https://github.com/xingyuan303/devops-agent-feishu-integration.git
+cd devops-agent-feishu-integration
 npm install
 ```
 
