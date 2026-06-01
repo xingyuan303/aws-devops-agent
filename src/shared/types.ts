@@ -384,7 +384,7 @@ export interface AlarmFilterRule {
  * Webhook routing rule.
  */
 export interface WebhookRoutingRule {
-  field: "namespace" | "tag";
+  field: "namespace" | "tag" | "alarmName";
   pattern: string;
   match: "equals" | "contains" | "regex";
 }

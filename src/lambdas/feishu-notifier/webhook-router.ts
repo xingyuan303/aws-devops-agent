@@ -6,10 +6,15 @@ import { WebhookConfig, WebhookRoutingRule } from '../../shared/types';
 function matchesRule(
   rule: WebhookRoutingRule,
   alarmNamespace: string,
-  alarmTags: Record<string, string>
+  alarmTags: Record<string, string>,
+  alarmName: string
 ): boolean {
   if (rule.field === 'namespace') {
     return matchPattern(alarmNamespace, rule.pattern, rule.match);
+  }
+
+  if (rule.field === 'alarmName') {
+    return matchPattern(alarmName, rule.pattern, rule.match);
   }
 
   if (rule.field === 'tag') {
@@ -58,7 +63,8 @@ function matchPattern(value: string, pattern: string, matchType: 'equals' | 'con
 function webhookMatches(
   config: WebhookConfig,
   alarmNamespace: string,
-  alarmTags: Record<string, string>
+  alarmTags: Record<string, string>,
+  alarmName: string
 ): boolean {
   // Empty routing rules → always matches (catch-all)
   if (config.routingRules.length === 0) {
@@ -66,7 +72,7 @@ function webhookMatches(
   }
 
   // Match if ANY rule matches
-  return config.routingRules.some((rule) => matchesRule(rule, alarmNamespace, alarmTags));
+  return config.routingRules.some((rule) => matchesRule(rule, alarmNamespace, alarmTags, alarmName));
 }
 
 /**
@@ -81,12 +87,14 @@ function webhookMatches(
  * @param alarmNamespace - The namespace of the alarm (e.g., "AWS/EC2")
  * @param alarmTags - Tags associated with the alarm
  * @param webhookConfigs - Array of webhook configurations with routing rules
+ * @param alarmName - The alarm name (for "alarmName" routing rules); defaults to ''
  * @returns Array of webhook URLs to send notifications to
  */
 export function routeWebhooks(
   alarmNamespace: string,
   alarmTags: Record<string, string>,
-  webhookConfigs: WebhookConfig[]
+  webhookConfigs: WebhookConfig[],
+  alarmName: string = ''
 ): string[] {
   if (webhookConfigs.length === 0) {
     return [];
@@ -95,7 +103,7 @@ export function routeWebhooks(
   const matchedUrls: string[] = [];
 
   for (const config of webhookConfigs) {
-    if (webhookMatches(config, alarmNamespace, alarmTags)) {
+    if (webhookMatches(config, alarmNamespace, alarmTags, alarmName)) {
       matchedUrls.push(config.url);
     }
   }

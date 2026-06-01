@@ -111,7 +111,12 @@ export const handler = async (event: FeishuNotifierInput): Promise<FeishuNotifie
     const alarmNamespace = firstAlarm?.namespace ?? '';
     const alarmTags = await fetchResourceTags(firstAlarm?.resource ?? '');
 
-    targetWebhookUrls = routeWebhooks(alarmNamespace, alarmTags, config.feishuWebhooks);
+    targetWebhookUrls = routeWebhooks(
+      alarmNamespace,
+      alarmTags,
+      config.feishuWebhooks,
+      firstAlarm?.alarmName ?? ''
+    );
   }
 
   // 把报告渲染成飞书消息序列。短报告 → 1 条卡片；超长报告 → 1 条精简卡片 + 多条文本消息。

@@ -307,3 +307,28 @@ describe('routeWebhooks', () => {
     });
   });
 });
+
+describe('routeWebhooks - alarmName routing', () => {
+  const configs: WebhookConfig[] = [
+    {
+      url: 'https://hook.feishu.cn/teamA',
+      name: 'Team A',
+      routingRules: [{ field: 'alarmName', pattern: '^teamA-', match: 'regex' }],
+    },
+    {
+      url: 'https://hook.feishu.cn/fallback',
+      name: 'Default',
+      routingRules: [],
+    },
+  ];
+
+  it('routes to the alarmName-matched webhook plus catch-all', () => {
+    const result = routeWebhooks('AWS/RDS', {}, configs, 'teamA-rds-cpu');
+    expect(result).toEqual(['https://hook.feishu.cn/teamA', 'https://hook.feishu.cn/fallback']);
+  });
+
+  it('routes a non-matching alarm name to catch-all only', () => {
+    const result = routeWebhooks('AWS/RDS', {}, configs, 'teamB-rds-cpu');
+    expect(result).toEqual(['https://hook.feishu.cn/fallback']);
+  });
+});
