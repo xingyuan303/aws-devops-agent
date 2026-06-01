@@ -348,7 +348,7 @@ Each rule in `alarmFilters[]` has three fields: `type` / `value` / `action`.
 |---|---|---|
 | `namespace` | Exact match on alarm metric namespace | `"AWS/EC2"` |
 | `name_pattern` | **Regex** match on alarm name | `"^prod-.*"` |
-| `tag` | Tag of the alarmed resource (⚠️ not yet wired up: CloudWatch alarm event payloads don't carry resource tags, so alarm-router would need an extra `cloudwatch:ListTagsForResource` call to evaluate this — let me know if you need it) | `"env=production"` |
+| `tag` | The alarmed **resource's AWS tag** (`key=value`, exact match). alarm-router calls `tag:GetResources` to fetch tags **only when a tag filter rule exists** (no tag rules → zero extra API calls). Works for services whose ARN alarm-router can build (EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS) | `"env=production"` |
 
 | action | Behavior |
 |---|---|

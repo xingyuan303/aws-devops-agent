@@ -3,6 +3,7 @@ import { AlarmRouterInput, AlarmRouterOutput } from '../../shared/types';
 import { ConfigManager } from '../../shared/config-manager';
 import { parseAlarmEvent } from './parser';
 import { shouldProcessAlarm } from './filter';
+import { fetchResourceTags } from '../../shared/resource-tags';
 
 const METRIC_NAMESPACE = 'CloudWatchAlarmAutoRCA';
 
@@ -77,6 +78,13 @@ export const handler = async (event: AlarmRouterInput): Promise<AlarmRouterOutpu
 
     await emitMetrics(1, 1);
     return parsedAlarm;
+  }
+
+  // Lazy tag fetch: only call the Tagging API when a tag-based filter rule
+  // exists, so deployments without tag filtering incur no extra API calls.
+  const needsTags = config.alarmFilters.some((f) => f.type === 'tag');
+  if (needsTags && parsedAlarm.resourceArn) {
+    parsedAlarm.tags = await fetchResourceTags(parsedAlarm.resourceArn);
   }
 
   // Step 4: Apply selection mode and filter rules

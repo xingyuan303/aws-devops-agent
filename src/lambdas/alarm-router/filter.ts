@@ -101,9 +101,10 @@ function matchNamePattern(alarm: AlarmRouterOutput, pattern: string): boolean {
 }
 
 /**
- * Match alarm tags against rule value.
+ * Match alarm against rule value using the resource's AWS tags.
  * Rule value format: "key=value"
- * Tags are stored in the alarm's dimensions field.
+ * Tags are populated by alarm-router (via the Resource Groups Tagging API)
+ * only when a tag filter rule exists.
  */
 function matchTag(alarm: AlarmRouterOutput, tagValue: string): boolean {
   const separatorIndex = tagValue.indexOf('=');
@@ -114,7 +115,7 @@ function matchTag(alarm: AlarmRouterOutput, tagValue: string): boolean {
   const tagKey = tagValue.substring(0, separatorIndex);
   const tagVal = tagValue.substring(separatorIndex + 1);
 
-  // Check dimensions for tag matching
-  const dimensions = alarm.dimensions ?? {};
-  return dimensions[tagKey] === tagVal;
+  // Match against the resource's AWS tags.
+  const tags = alarm.tags ?? {};
+  return tags[tagKey] === tagVal;
 }

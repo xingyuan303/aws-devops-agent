@@ -356,7 +356,7 @@ aws ssm put-parameter --region us-east-1 \
 |---|---|---|
 | `namespace` | 告警的指标 namespace **完全相等** | `"AWS/EC2"` |
 | `name_pattern` | 告警名按 **正则** 匹配 | `"^prod-.*"` |
-| `tag` | 告警资源的 tag(⚠️ 当前未实装：CloudWatch 告警事件 payload 不带资源 tag,需要在 alarm-router 里额外调 `cloudwatch:ListTagsForResource` 才能用——有需要告诉我加上) | `"env=production"` |
+| `tag` | 告警**资源的 AWS tag**（`key=value` 完全相等）。仅当配置里存在 tag 过滤规则时，alarm-router 才调用 `tag:GetResources` 拉取资源 tag（无 tag 规则则**零额外 API 调用**）。支持 alarm-router 能拼出 ARN 的服务（EC2/RDS/Lambda/ELB/SQS/DynamoDB/S3/ECS/SNS）| `"env=production"` |
 
 | action | 行为 |
 |---|---|

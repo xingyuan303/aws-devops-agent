@@ -142,7 +142,7 @@ describe('shouldProcessAlarm', () => {
 
   describe('filter rules - tag', () => {
     it('should include alarm matching tag rule', () => {
-      const alarm = makeAlarm({ dimensions: { Environment: 'production' } });
+      const alarm = makeAlarm({ tags: { Environment: 'production' } });
       const config = makeConfig({
         alarmFilters: [{ type: 'tag', value: 'Environment=production', action: 'include' }],
       });
@@ -151,7 +151,7 @@ describe('shouldProcessAlarm', () => {
     });
 
     it('should reject alarm not matching tag rule', () => {
-      const alarm = makeAlarm({ dimensions: { Environment: 'staging' } });
+      const alarm = makeAlarm({ tags: { Environment: 'staging' } });
       const config = makeConfig({
         alarmFilters: [{ type: 'tag', value: 'Environment=production', action: 'include' }],
       });
@@ -160,7 +160,7 @@ describe('shouldProcessAlarm', () => {
     });
 
     it('should handle tag value with equals sign in value', () => {
-      const alarm = makeAlarm({ dimensions: { Config: 'key=value' } });
+      const alarm = makeAlarm({ tags: { Config: 'key=value' } });
       const config = makeConfig({
         alarmFilters: [{ type: 'tag', value: 'Config=key=value', action: 'include' }],
       });

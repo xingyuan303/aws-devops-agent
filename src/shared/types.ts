@@ -80,6 +80,11 @@ export interface AlarmRouterOutput {
   resourceArn: string;
   filtered: boolean;
   filterReason?: string;
+  /**
+   * Resource's AWS tags, populated by alarm-router only when a tag-based
+   * filter rule exists. Used by the `tag` filter type.
+   */
+  tags?: Record<string, string>;
 }
 
 // -----------------------------------------------------------------------------

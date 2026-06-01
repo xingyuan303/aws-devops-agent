@@ -18,6 +18,17 @@ jest.mock('@aws-sdk/client-ssm', () => ({
   GetParameterCommand: jest.fn().mockImplementation((input) => ({ input })),
 }));
 
+const mockTaggingSend = jest.fn().mockResolvedValue({
+  ResourceTagMappingList: [{ Tags: [{ Key: 'Environment', Value: 'production' }] }],
+});
+
+jest.mock('@aws-sdk/client-resource-groups-tagging-api', () => ({
+  ResourceGroupsTaggingAPIClient: jest.fn().mockImplementation(() => ({
+    send: mockTaggingSend,
+  })),
+  GetResourcesCommand: jest.fn().mockImplementation((input) => ({ input })),
+}));
+
 function createValidConfig(overrides?: Partial<SystemConfig>): SystemConfig {
   return {
     version: '1.0.0',
@@ -267,7 +278,7 @@ describe('AlarmRouter Handler', () => {
     it('should apply tag filter correctly', async () => {
       await loadHandler(
         createValidConfig({
-          alarmFilters: [{ type: 'tag', value: 'InstanceId=i-1234567890abcdef0', action: 'include' }],
+          alarmFilters: [{ type: 'tag', value: 'Environment=production', action: 'include' }],
         })
       );
 
