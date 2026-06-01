@@ -68,12 +68,10 @@ CloudWatch alarm → EventBridge → Step Functions (suspends, waits for callbac
 ```
 .
 ├── bin/
-│   ├── app.ts                        ← Main stack entry point; reads config from context/env
-│   └── verdaccio-proxy.ts            ← ⚠ Independent stack, unrelated to RCA
+│   └── app.ts                        ← Main stack entry point; reads config from context/env
 │
 ├── lib/
-│   ├── cloudwatch-alarm-auto-rca-stack.ts  ← All AWS resources for the main stack
-│   └── verdaccio-proxy-stack.ts            ← ⚠ Independent stack, see above
+│   └── cloudwatch-alarm-auto-rca-stack.ts  ← All AWS resources for the main stack
 │
 ├── src/
 │   ├── shared/                       ← Shared across Lambdas
@@ -375,11 +373,6 @@ npm run test:unit       # Unit only
 npm run test:property   # fast-check property tests only
 npm run lint            # tsc --noEmit
 ```
-
-> **Known lint error**: `lib/verdaccio-proxy-stack.ts` reports `grantTaskDefinitionAccess` does not exist. That's an
-> independent stack (private npm registry proxy) unrelated to the RCA pipeline; the symbol was broken by a CDK API
-> upgrade. It does not affect the main stack's deployment or runtime — the main stack compiles cleanly within the
-> same `tsc` invocation.
 
 ---
 

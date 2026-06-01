@@ -68,12 +68,10 @@ CloudWatch 告警 → EventBridge → Step Functions(挂起等回调)→ HMAC �
 ```
 .
 ├── bin/
-│   ├── app.ts                        ← 主 stack 入口,从 context/env 读配置
-│   └── verdaccio-proxy.ts            ← ⚠ 独立 stack,与本 RCA 流程无关
+│   └── app.ts                        ← 主 stack 入口,从 context/env 读配置
 │
 ├── lib/
-│   ├── cloudwatch-alarm-auto-rca-stack.ts  ← 主 stack 全部 AWS 资源
-│   └── verdaccio-proxy-stack.ts            ← ⚠ 独立 stack,见上
+│   └── cloudwatch-alarm-auto-rca-stack.ts  ← 主 stack 全部 AWS 资源
 │
 ├── src/
 │   ├── shared/                       ← 跨 Lambda 复用
@@ -375,10 +373,6 @@ npm run test:unit       # 仅单元
 npm run test:property   # 仅 fast-check 属性测试
 npm run lint            # tsc --noEmit
 ```
-
-> **已知 lint 错误**:`lib/verdaccio-proxy-stack.ts` 报 `grantTaskDefinitionAccess` 不存在。这是
-> 另一个独立的、与 RCA 流程无关的 stack(私有 npm registry 代理),CDK API 升级后破坏的接口。
-> 不影响主 stack 的部署/运行;主 stack 在同一个 `tsc` 输出里没有报错。
 
 ---
 
