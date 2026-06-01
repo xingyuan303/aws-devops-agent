@@ -292,7 +292,7 @@ The default is `alarmSelectionMode = "all"`, meaning **every alarm transitioning
 
 > Why this lives in SSM, not CDK: filter rules are *runtime configuration* — they change as your business does. CDK only creates an empty default; the rules sit in SSM so they can be hot-reloaded.
 
-#### Three ways to filter
+#### Four ways to filter
 
 **1. Whitelist mode (strictest) — only RCA the alarms you name**
 
@@ -336,6 +336,19 @@ Keep `alarmSelectionMode` as `"all"` and express the filter via `alarmFilters`:
   "alarmFilters": [
     {"type": "name_pattern", "value": "^prod-",  "action": "include"},
     {"type": "name_pattern", "value": ".*test.*","action": "exclude"}
+  ]
+}
+```
+
+**4. Filter by tag — e.g. only RCA alarms on production resources**
+
+Filter by the **resource's AWS tag**. alarm-router only looks up tags when a tag rule exists (no tag rule → no API call):
+
+```json
+{
+  "alarmSelectionMode": "all",
+  "alarmFilters": [
+    {"type": "tag", "value": "env=production", "action": "include"}
   ]
 }
 ```
@@ -386,6 +399,18 @@ Example — send `project=abc` resource alarms to the abc group, route `teamA-*`
 ```
 
 > The tag key is not hardcoded — it only appears in the rule `pattern`, so switching to `team` / `cost-center` later is a config-only change.
+
+#### Filtering vs routing — quick reference
+
+| | Filter (process / drop) | Route (which group) |
+|---|---|---|
+| Stage | alarm-router (front) | feishu-notifier (end) |
+| Alarm name | whitelist (exact) + `name_pattern` (regex) | `alarmName` (exact / contains / regex) |
+| namespace | exact | exact / contains / regex |
+| tag (resource tag) | exact | exact / contains / regex |
+| Match semantics | `include` / `exclude`, exclude wins | matched webhooks all receive; empty rules = catch-all; no match → broadcast |
+
+> Both tag lookups are on-demand: `tag:GetResources` is only called when a tag rule actually exists.
 
 #### Inspect the live config
 

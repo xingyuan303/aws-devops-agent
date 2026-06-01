@@ -300,7 +300,7 @@ aws cloudwatch set-alarm-state \
 
 > 设计原因：筛选规则属于"运行时配置"，会随业务变；CDK 只创建默认空配置，规则放在 SSM 里支持热加载。
 
-#### 三种筛选方式
+#### 四种筛选方式
 
 **1. 白名单模式（最严格）—— 只 RCA 指定名字的告警**
 
@@ -344,6 +344,19 @@ aws ssm put-parameter --region us-east-1 \
   "alarmFilters": [
     {"type": "name_pattern", "value": "^prod-",  "action": "include"},
     {"type": "name_pattern", "value": ".*test.*","action": "exclude"}
+  ]
+}
+```
+
+**4. 按 tag 筛 —— 例如只 RCA 生产环境资源的告警**
+
+按**资源的 AWS tag** 过滤。仅当配置里存在 tag 规则时，alarm-router 才会去查资源 tag（无 tag 规则则不调用 API）：
+
+```json
+{
+  "alarmSelectionMode": "all",
+  "alarmFilters": [
+    {"type": "tag", "value": "env=production", "action": "include"}
   ]
 }
 ```
@@ -394,6 +407,18 @@ aws ssm put-parameter --region us-east-1 \
 ```
 
 > tag 键不写死在代码里，只出现在规则 `pattern` 中，将来换成 `team` / `cost-center` 只需改配置。
+
+#### 过滤 / 路由能力速查
+
+| | 过滤 filter（处理 / 丢弃）| 路由 route（发哪个群）|
+|---|---|---|
+| 位置 | alarm-router（最前端）| feishu-notifier（最末端）|
+| 告警名 | 白名单（精确）+ `name_pattern`（正则）| `alarmName`（精确 / 包含 / 正则）|
+| namespace | 精确 | 精确 / 包含 / 正则 |
+| tag（资源标签）| 精确 | 精确 / 包含 / 正则 |
+| 命中语义 | `include` / `exclude`，exclude 优先 | 命中即收，发给所有命中群；空规则 = catch-all，全不中则广播兜底 |
+
+> 两处用到 tag 时都**按需查询**：没有 tag 规则就不会调用 `tag:GetResources`。
 
 #### 验证当前生效的配置
 
