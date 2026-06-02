@@ -221,6 +221,23 @@ aws cloudwatch set-alarm-state \
 ```
 ---
 
+## 多区域监控（可选）
+
+默认一套栈只处理**部署所在区域**的告警（CloudWatch 告警事件是区域级的）。如需用**一套中心栈**统一处理多个区域的告警，在每个业务区域额外部署一个轻量转发栈，把告警事件转发到中心区域（主栈所在区，通常是 DevOps Agent 所在的 us-east-1）：
+
+```bash
+# 主栈仍部署在中心区域（如 us-east-1）；下面同时为 us-west-2、eu-central-1 部署转发栈
+npx cdk deploy --all -c forwardFromRegions=us-west-2,eu-central-1 \
+  -c agentSpaceId="..." -c feishuWebhookUrl="..."
+```
+
+- 每个源区域需先 `npx cdk bootstrap aws://<account>/<region>`。
+- 转发栈只创建一条 EventBridge 规则（把本区 `CloudWatch Alarm State Change` 的 ALARM 事件转发到中心区域默认总线）+ 所需 IAM role；核心逻辑全在中心栈，无需改动。
+- 转发事件保留原始 region/account，中心栈据此为各区资源拼出正确 ARN、按区查 tag。
+- ⚠️ DevOps Agent 的 webhook 与 `aws.aidevops` 回调事件需在中心区域可用——这正是把中心栈放在 DevOps Agent 所在区（us-east-1）的原因。
+
+---
+
 ## CDK 部署的资源清单
 
 | 资源 | 类型 | 说明 |

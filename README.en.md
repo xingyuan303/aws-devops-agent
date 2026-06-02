@@ -214,6 +214,23 @@ aws cloudwatch set-alarm-state \
 
 ---
 
+## Multi-region monitoring (optional)
+
+By default one stack only processes alarms in **its own region** (CloudWatch alarm events are regional). To process alarms from multiple regions with a **single central stack**, deploy a lightweight forwarder stack in each source region that forwards alarm events to the central region (where the main stack runs — typically the DevOps Agent region, us-east-1):
+
+```bash
+# Main stack stays in the central region (e.g. us-east-1); also deploy forwarders for us-west-2 and eu-central-1
+npx cdk deploy --all -c forwardFromRegions=us-west-2,eu-central-1 \
+  -c agentSpaceId="..." -c feishuWebhookUrl="..."
+```
+
+- Bootstrap each source region first: `npx cdk bootstrap aws://<account>/<region>`.
+- The forwarder stack only creates one EventBridge rule (forwards this region's `CloudWatch Alarm State Change` ALARM events to the central default bus) plus the required IAM role; all core logic stays in the central stack.
+- Forwarded events keep their original region/account, so the central stack builds the correct per-region resource ARN and looks up tags in the right region.
+- ⚠️ The DevOps Agent webhook and `aws.aidevops` callback events must be available in the central region — which is why the central stack is placed in the DevOps Agent region (us-east-1).
+
+---
+
 ## Resources Created by CDK
 
 | Resource | Type | Purpose |
