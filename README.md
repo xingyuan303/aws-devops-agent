@@ -514,7 +514,7 @@ aws logs tail /aws/lambda/<AlarmRouterFunction-name> \
 ```bash
 npm install          # 安装依赖
 npm run build        # 编译 TypeScript
-npm test             # 运行全部 292 个测试
+npm test             # 运行全部测试（单元 + 属性 + 集成）
 npm run test:unit    # 仅单元测试
 npm run test:property # 仅属性测试
 npm run synth        # 生成 CloudFormation 模板
