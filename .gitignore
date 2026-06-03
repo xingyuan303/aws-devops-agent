@@ -25,5 +25,8 @@ Thumbs.db
 # Logs
 *.log
 
+# Local backups / secret-bearing files (e.g. SSM config with webhook URLs)
+*.backup.json
+
 # Agent
 .kiro/
