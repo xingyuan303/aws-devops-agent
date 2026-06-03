@@ -105,8 +105,8 @@ describe('CDK Stack', () => {
       });
     });
 
-    it('should have exactly 5 Lambda functions', () => {
-      template.resourceCountIs('AWS::Lambda::Function', 5);
+    it('should have 7 Lambda functions (5 core + config seeder + CR provider)', () => {
+      template.resourceCountIs('AWS::Lambda::Function', 7);
     });
 
     it('should configure environment variables for Lambda functions', () => {
@@ -167,11 +167,19 @@ describe('CDK Stack', () => {
     });
   });
 
-  describe('SSM Parameter', () => {
-    it('should create SSM parameter with correct path', () => {
-      template.hasResourceProperties('AWS::SSM::Parameter', {
-        Name: '/cloudwatch-alarm-auto-rca/config',
-        Type: 'String',
+  describe('SSM config seeding', () => {
+    it('does not manage the config parameter as a CFN resource', () => {
+      // Decoupled: no AWS::SSM::Parameter so deploys never overwrite runtime config.
+      template.resourceCountIs('AWS::SSM::Parameter', 0);
+    });
+
+    it('wires the seeder to the correct parameter path', () => {
+      template.hasResourceProperties('AWS::Lambda::Function', {
+        Environment: {
+          Variables: Match.objectLike({
+            PARAM_NAME: '/cloudwatch-alarm-auto-rca/config',
+          }),
+        },
       });
     });
   });

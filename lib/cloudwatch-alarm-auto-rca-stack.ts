@@ -3,7 +3,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as cr from 'aws-cdk-lib/custom-resources';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
@@ -142,26 +142,64 @@ export class CloudwatchAlarmAutoRcaStack extends cdk.Stack {
     // SSM Parameter Store (Task 12.5)
     // =========================================================================
 
-    const configParameter = new ssm.StringParameter(this, 'SystemConfig', {
-      parameterName: '/cloudwatch-alarm-auto-rca/config',
-      description: 'CloudWatch Alarm Auto RCA system configuration',
-      stringValue: JSON.stringify({
-        version: '1.0.0',
-        alarmSelectionMode: 'all',
-        selectedAlarmNames: [],
-        alarmFilters: [],
-        feishuWebhooks: props?.feishuWebhookUrl
-          ? [{ url: props.feishuWebhookUrl, name: '默认告警群', routingRules: [] }]
-          : [],
-        rcaTimeout: 600,
-        retryPolicy: {
-          maxRetries: 1,
-          initialDelay: 5,
-          backoffMultiplier: 2,
-        },
-        groupingWindow: 120,
-        retentionDays: 90,
-      }),
+    // The system config is runtime-mutable (hot-reloaded by ConfigManager).
+    // To stop CloudFormation from overwriting the operator's runtime changes
+    // on every deploy, the parameter is NOT a CFN-managed resource. A custom
+    // resource seeds an initial value ONLY when the parameter does not exist.
+    const configParameterName = '/cloudwatch-alarm-auto-rca/config';
+    const configParameterArn = `arn:aws:ssm:${this.region}:${this.account}:parameter${configParameterName}`;
+
+    const initialConfig = JSON.stringify({
+      version: '1.0.0',
+      alarmSelectionMode: 'all',
+      selectedAlarmNames: [],
+      alarmFilters: [],
+      feishuWebhooks: props?.feishuWebhookUrl
+        ? [{ url: props.feishuWebhookUrl, name: '默认告警群', routingRules: [] }]
+        : [],
+      rcaTimeout: 600,
+      retryPolicy: { maxRetries: 1, initialDelay: 5, backoffMultiplier: 2 },
+      groupingWindow: 120,
+      retentionDays: 90,
+    });
+
+    const configSeederFn = new lambda.Function(this, 'ConfigSeederFunction', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'index.handler',
+      timeout: cdk.Duration.seconds(30),
+      code: lambda.Code.fromInline(
+        [
+          "const { SSMClient, GetParameterCommand, PutParameterCommand } = require('@aws-sdk/client-ssm');",
+          'exports.handler = async (event) => {',
+          "  if (event.RequestType === 'Delete') return {};",
+          '  const ssm = new SSMClient({});',
+          '  const Name = process.env.PARAM_NAME;',
+          '  try {',
+          '    await ssm.send(new GetParameterCommand({ Name }));',
+          '    // Parameter exists -> leave the current value untouched.',
+          '  } catch (e) {',
+          "    if (e.name === 'ParameterNotFound') {",
+          "      await ssm.send(new PutParameterCommand({ Name, Type: 'String', Value: process.env.INITIAL_VALUE }));",
+          '    } else { throw e; }',
+          '  }',
+          '  return {};',
+          '};',
+        ].join('\n')
+      ),
+      environment: { PARAM_NAME: configParameterName, INITIAL_VALUE: initialConfig },
+    });
+    configSeederFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter', 'ssm:PutParameter'],
+        resources: [configParameterArn],
+      })
+    );
+
+    const configSeederProvider = new cr.Provider(this, 'ConfigSeederProvider', {
+      onEventHandler: configSeederFn,
+    });
+    new cdk.CustomResource(this, 'ConfigSeed', {
+      serviceToken: configSeederProvider.serviceToken,
     });
 
     // =========================================================================
@@ -272,12 +310,17 @@ export class CloudwatchAlarmAutoRcaStack extends cdk.Stack {
     // IAM Permissions
     // =========================================================================
 
-    // SSM read access for all Lambdas
-    configParameter.grantRead(alarmRouterFn);
-    configParameter.grantRead(alarmGrouperFn);
-    configParameter.grantRead(rcaAnalyzerFn);
-    configParameter.grantRead(feishuNotifierFn);
-    configParameter.grantRead(investigationEventHandlerFn);
+    // SSM read access for all Lambdas (explicit — the parameter is seeded by a
+    // custom resource, not managed as a CFN resource).
+    const configReadPolicy = new iam.PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [configParameterArn],
+    });
+    alarmRouterFn.addToRolePolicy(configReadPolicy);
+    alarmGrouperFn.addToRolePolicy(configReadPolicy);
+    rcaAnalyzerFn.addToRolePolicy(configReadPolicy);
+    feishuNotifierFn.addToRolePolicy(configReadPolicy);
+    investigationEventHandlerFn.addToRolePolicy(configReadPolicy);
 
     // DynamoDB permissions
     alarmGroupTable.grantReadWriteData(alarmGrouperFn);
