@@ -116,8 +116,8 @@ describe('Property 13: Invalid configuration fallback', () => {
     );
   });
 
-  it('should retain previous valid config when SSM returns invalid config', () => {
-    fc.assert(
+  it('should retain previous valid config when SSM returns invalid config', async () => {
+    await fc.assert(
       fc.asyncProperty(arbInvalidConfig, async (invalidConfig: unknown) => {
         const configManager = new ConfigManager({
           ssmClient: mockSsmClient,
@@ -148,8 +148,8 @@ describe('Property 13: Invalid configuration fallback', () => {
     );
   });
 
-  it('should fall back to DEFAULT_CONFIG when no valid config has ever been loaded and invalid config is provided', () => {
-    fc.assert(
+  it('should fall back to DEFAULT_CONFIG when no valid config has ever been loaded and invalid config is provided', async () => {
+    await fc.assert(
       fc.asyncProperty(arbInvalidConfig, async (invalidConfig: unknown) => {
         const configManager = new ConfigManager({
           ssmClient: mockSsmClient,
