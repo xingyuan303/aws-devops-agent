@@ -424,6 +424,5 @@ export interface SystemConfig {
   rcaTimeout: number;
   retryPolicy: RetryPolicy;
   groupingWindow: number;
-  enabledNamespaces: string[];
   retentionDays: number;
 }

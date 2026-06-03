@@ -47,7 +47,6 @@ function makeBaseConfig(overrides: Partial<SystemConfig> = {}): SystemConfig {
     rcaTimeout: 300,
     retryPolicy: { maxRetries: 3, initialDelay: 5, backoffMultiplier: 2 },
     groupingWindow: 120,
-    enabledNamespaces: ['AWS/EC2', 'AWS/RDS'],
     retentionDays: 90,
     ...overrides,
   };

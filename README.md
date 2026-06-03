@@ -287,7 +287,6 @@ npx cdk deploy --all -c forwardFromRegions=us-west-2,eu-central-1 \
   "rcaTimeout": 300,                    // RCA 超时（秒）
   "retryPolicy": {"maxRetries": 3, "initialDelay": 5, "backoffMultiplier": 2},
   "groupingWindow": 120,                // 告警聚合窗口（秒）
-  "enabledNamespaces": ["AWS/EC2", "AWS/RDS", "AWS/Lambda", "AWS/ECS"],
   "retentionDays": 90                   // 记录保留天数
 }
 ```
@@ -334,7 +333,6 @@ aws ssm put-parameter --region us-east-1 \
     "rcaTimeout":600,
     "retryPolicy":{"maxRetries":1,"initialDelay":5,"backoffMultiplier":2},
     "groupingWindow":120,
-    "enabledNamespaces":["AWS/EC2","AWS/RDS","AWS/Lambda","AWS/ECS"],
     "retentionDays":90
   }'
 ```

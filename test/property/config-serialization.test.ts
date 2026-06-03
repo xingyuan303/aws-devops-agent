@@ -53,7 +53,6 @@ const arbValidSystemConfig: fc.Arbitrary<SystemConfig> = fc
     rcaTimeout: fc.integer({ min: 1, max: 3600 }),
     retryPolicy: arbRetryPolicy,
     groupingWindow: fc.integer({ min: 1, max: 600 }),
-    enabledNamespaces: fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0), { minLength: 0, maxLength: 5 }),
     retentionDays: fc.integer({ min: 1, max: 365 }),
   })
   .map((cfg) => {
@@ -83,7 +82,6 @@ describe('Property 12: Configuration serialization round-trip', () => {
         expect(deserialized.rcaTimeout).toEqual(config.rcaTimeout);
         expect(deserialized.retryPolicy).toEqual(config.retryPolicy);
         expect(deserialized.groupingWindow).toEqual(config.groupingWindow);
-        expect(deserialized.enabledNamespaces).toEqual(config.enabledNamespaces);
         expect(deserialized.retentionDays).toEqual(config.retentionDays);
 
         // Full deep equality

@@ -38,7 +38,6 @@ jest.mock('@aws-sdk/client-ssm', () => ({
           rcaTimeout: 300,
           retryPolicy: { maxRetries: 3, initialDelay: 5, backoffMultiplier: 2 },
           groupingWindow: 120,
-          enabledNamespaces: ['AWS/EC2'],
           retentionDays: 90,
         }),
       },

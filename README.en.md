@@ -282,7 +282,6 @@ Path: `/cloudwatch-alarm-auto-rca/config`
   "rcaTimeout": 300,                    // RCA timeout in seconds
   "retryPolicy": {"maxRetries": 3, "initialDelay": 5, "backoffMultiplier": 2},
   "groupingWindow": 120,                // alarm aggregation window in seconds
-  "enabledNamespaces": ["AWS/EC2", "AWS/RDS", "AWS/Lambda", "AWS/ECS"],
   "retentionDays": 90                   // record retention
 }
 ```
@@ -326,7 +325,6 @@ aws ssm put-parameter --region us-east-1 \
     "rcaTimeout":600,
     "retryPolicy":{"maxRetries":1,"initialDelay":5,"backoffMultiplier":2},
     "groupingWindow":120,
-    "enabledNamespaces":["AWS/EC2","AWS/RDS","AWS/Lambda","AWS/ECS"],
     "retentionDays":90
   }'
 ```
