@@ -112,9 +112,10 @@ export function isValidWorkflowTransitionSequence(
  * Workflow:
  *   [Start] → InvokeAlarmRouter → CheckFiltered?
  *     → Yes (filtered=true) → RecordFiltered → [End]
- *     → No → InvokeAlarmGrouper → CheckShouldWait?
- *       → Yes (shouldWait=true) → WaitForGroupWindow → InvokeRCAAnalyzer
- *       → No → InvokeRCAAnalyzer
+ *     → No → InvokeAlarmGrouper → CheckIsNewGroup?
+ *       → Yes (isNewGroup=true, owner) → InvokeRCAAnalyzer (immediately)
+ *       → No (joined an active group → duplicate within dedup window)
+ *            → RecordSuppressed → [End]
  *   InvokeRCAAnalyzer → CheckRCAStatus?
  *     → "completed" → InvokeFeishuNotifier(rca_complete) → RecordSuccess → [End]
  *     → "partial"/"failed" → InvokeFeishuNotifier(rca_partial/rca_timeout) → RecordPartial → [End]
@@ -166,24 +167,17 @@ export function buildWorkflowDefinition(
     retryOnServiceExceptions: true,
   });
 
-  // --- Step 4: Check if should wait for grouping window ---
-  const checkShouldWait = new sfn.Choice(scope, 'CheckShouldWait');
+  // --- Step 4: Check if this execution owns the group (Design B dedup) ---
+  // Only the alarm that CREATED the group (isNewGroup=true) runs the RCA, and it
+  // runs immediately (no wait). Alarms that joined an existing group within the
+  // resource dedup window were appended by the grouper and stop here, so we
+  // never trigger a duplicate investigation or orphan a waitForTaskToken.
+  const checkIsNewGroup = new sfn.Choice(scope, 'CheckIsNewGroup');
 
-  // --- Step 5: Wait for grouping window ---
-  const waitForGroupWindow = new sfn.Wait(scope, 'WaitForGroupWindow', {
-    time: sfn.WaitTime.secondsPath('$.waitSeconds'),
-  });
-
-  // --- Prepare wait seconds (calculate from waitUntil) ---
-  const prepareWaitSeconds = new sfn.Pass(scope, 'PrepareWaitSeconds', {
-    parameters: {
-      'groupId.$': '$.groupId',
-      'alarms.$': '$.alarms',
-      'isNewGroup.$': '$.isNewGroup',
-      'shouldWait.$': '$.shouldWait',
-      'waitUntil.$': '$.waitUntil',
-      'waitSeconds': 120, // Default grouping window (2 minutes)
-    },
+  // --- Terminal state for alarms suppressed by the resource dedup window ---
+  const recordSuppressed = new sfn.Pass(scope, 'RecordSuppressed', {
+    result: sfn.Result.fromObject({ outcome: 'suppressed_duplicate' }),
+    resultPath: '$.workflowResult',
   });
 
   // --- Step 6: Invoke RCAAnalyzer (waitForTaskToken pattern) ---
@@ -258,16 +252,16 @@ export function buildWorkflowDefinition(
     .when(sfn.Condition.booleanEquals('$.filtered', true), recordFiltered)
     .otherwise(invokeAlarmGrouper);
 
-  // AlarmGrouper → Check if should wait
-  invokeAlarmGrouper.next(checkShouldWait);
+  // AlarmGrouper → Check if this execution owns the group
+  invokeAlarmGrouper.next(checkIsNewGroup);
 
-  // If should wait → wait then analyze; otherwise analyze immediately
-  checkShouldWait
+  // Owner (new group) → run RCA immediately. Joined alarms → suppressed terminal.
+  checkIsNewGroup
     .when(
-      sfn.Condition.booleanEquals('$.shouldWait', true),
-      prepareWaitSeconds.next(waitForGroupWindow).next(invokeRCAAnalyzer)
+      sfn.Condition.booleanEquals('$.isNewGroup', true),
+      invokeRCAAnalyzer
     )
-    .otherwise(invokeRCAAnalyzer);
+    .otherwise(recordSuppressed);
 
   // RCAAnalyzer → Check status
   invokeRCAAnalyzer.next(checkRCAStatus);

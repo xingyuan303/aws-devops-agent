@@ -139,18 +139,21 @@ export const handler = async (event: AlarmGrouperInput): Promise<AlarmGrouperOut
     const activeGroup = await findActiveGroup(alarm.resourceArn, now);
 
     if (activeGroup) {
-      // Add alarm to existing group
+      // Add alarm to existing group, then suppress: an investigation for this
+      // resource is already in flight (triggered by the alarm that created the
+      // group). Re-investigating would duplicate work and orphan a
+      // waitForTaskToken. Append for the record and stop here.
       const updatedGroup = await addAlarmToGroup(activeGroup, alarm);
       console.log(
-        `[AlarmGrouper] Added alarm ${alarm.alarmName} to existing group ${activeGroup.groupId}`
+        `[AlarmGrouper] Added alarm ${alarm.alarmName} to existing group ${activeGroup.groupId} — suppressed as duplicate within dedup window`
       );
 
       return {
         groupId: updatedGroup.groupId,
         alarms: updatedGroup.alarms,
         isNewGroup: false,
-        shouldWait: true,
-        waitUntil: activeGroup.windowEnd,
+        shouldWait: false,
+        suppressed: true,
       };
     }
 

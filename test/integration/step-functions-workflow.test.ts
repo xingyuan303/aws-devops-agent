@@ -372,7 +372,7 @@ describe('Integration: Step Functions workflow end-to-end (Requirements 2.1, 2.2
       'InvokeAlarmRouter',
       'CheckFiltered',
       'InvokeAlarmGrouper',
-      'CheckShouldWait',
+      'CheckIsNewGroup',
       'InvokeRCAAnalyzer',
       'CheckRCAStatus',
       'InvokeFeishuNotifierComplete',
@@ -402,7 +402,7 @@ describe('Integration: Step Functions workflow end-to-end (Requirements 2.1, 2.2
     expect(trace.finalOutput.workflowResult.outcome).toBe('filtered');
   });
 
-  it('takes the grouping wait path: shouldWait=true → PrepareWaitSeconds → WaitForGroupWindow → RCA', async () => {
+  it('takes the dedup path: isNewGroup=false (joined active group) → RecordSuppressed, no RCA/notify', async () => {
     const alarm = makeAlarm();
     const lambdas: LambdaRegistry = {
       [arn.alarmRouter]: () => alarm,
@@ -410,20 +410,15 @@ describe('Integration: Step Functions workflow end-to-end (Requirements 2.1, 2.2
         groupId: 'group-2',
         alarms: [alarm, alarm],
         isNewGroup: false,
-        shouldWait: true,
-        waitUntil: '2024-01-15T10:02:00Z',
+        shouldWait: false,
+        suppressed: true,
       }),
-      [arn.rcaAnalyzer]: () => ({
-        rcaReport: makeRcaReport('completed'),
-        status: 'completed',
-        duration: 100,
-      }),
-      [arn.feishuNotifier]: () => ({
-        success: true,
-        sentTo: ['hook'],
-        failedTo: [],
-        retryCount: 0,
-      }),
+      [arn.rcaAnalyzer]: () => {
+        throw new Error('rcaAnalyzer should not be called on the suppressed dedup path');
+      },
+      [arn.feishuNotifier]: () => {
+        throw new Error('feishuNotifier should not be called on the suppressed dedup path');
+      },
     };
 
     const trace = await executeWorkflow(synth.definition, { event: 'cloudwatch' }, lambdas);
@@ -432,16 +427,10 @@ describe('Integration: Step Functions workflow end-to-end (Requirements 2.1, 2.2
       'InvokeAlarmRouter',
       'CheckFiltered',
       'InvokeAlarmGrouper',
-      'CheckShouldWait',
-      'PrepareWaitSeconds',
-      'WaitForGroupWindow',
-      'InvokeRCAAnalyzer',
-      'CheckRCAStatus',
-      'InvokeFeishuNotifierComplete',
-      'CheckNotificationResult',
-      'RecordSuccess',
+      'CheckIsNewGroup',
+      'RecordSuppressed',
     ]);
-    expect(trace.finalOutput.workflowResult.outcome).toBe('success');
+    expect(trace.finalOutput.workflowResult.outcome).toBe('suppressed_duplicate');
   });
 
   it('takes the partial path when RCA status is not "completed"', async () => {
@@ -472,7 +461,7 @@ describe('Integration: Step Functions workflow end-to-end (Requirements 2.1, 2.2
       'InvokeAlarmRouter',
       'CheckFiltered',
       'InvokeAlarmGrouper',
-      'CheckShouldWait',
+      'CheckIsNewGroup',
       'InvokeRCAAnalyzer',
       'CheckRCAStatus',
       'InvokeFeishuNotifierPartial',

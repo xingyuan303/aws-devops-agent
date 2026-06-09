@@ -158,13 +158,11 @@ describe('buildWorkflowDefinition - state machine structure', () => {
       'InvokeFeishuNotifierPartial',
       // Choices
       'CheckFiltered',
-      'CheckShouldWait',
+      'CheckIsNewGroup',
       'CheckRCAStatus',
       'CheckNotificationResult',
-      // Wait + helper
-      'WaitForGroupWindow',
-      'PrepareWaitSeconds',
       // Terminal Pass states
+      'RecordSuppressed',
       'RecordFiltered',
       'RecordSuccess',
       'RecordPartial',
@@ -177,7 +175,7 @@ describe('buildWorkflowDefinition - state machine structure', () => {
   });
 
   it('marks RecordFiltered, RecordSuccess, RecordPartial, RecordFailure as terminal Pass states', () => {
-    for (const name of ['RecordFiltered', 'RecordSuccess', 'RecordPartial', 'RecordFailure']) {
+    for (const name of ['RecordFiltered', 'RecordSuccess', 'RecordPartial', 'RecordFailure', 'RecordSuppressed']) {
       const state = harness.definition.States[name];
       expect(state.Type).toBe('Pass');
       expect(state.End).toBe(true);
@@ -189,6 +187,7 @@ describe('buildWorkflowDefinition - state machine structure', () => {
     expect(harness.definition.States.RecordSuccess.Result.outcome).toBe('success');
     expect(harness.definition.States.RecordPartial.Result.outcome).toBe('partial');
     expect(harness.definition.States.RecordFailure.Result.outcome).toBe('failure');
+    expect(harness.definition.States.RecordSuppressed.Result.outcome).toBe('suppressed_duplicate');
   });
 });
 
@@ -224,7 +223,7 @@ describe('buildWorkflowDefinition - Lambda task wiring', () => {
     const state = harness.definition.States.InvokeAlarmGrouper;
     expect(state.Parameters.Payload).toEqual({ 'alarm.$': '$' });
     expect(state.OutputPath).toBe('$.Payload');
-    expect(state.Next).toBe('CheckShouldWait');
+    expect(state.Next).toBe('CheckIsNewGroup');
   });
 
   it('InvokeRCAAnalyzer calls the rca-analyzer Lambda using waitForTaskToken with groupId/alarms/taskToken and a 13-minute task timeout', () => {
@@ -287,33 +286,22 @@ describe('buildWorkflowDefinition - Choice and Wait branching', () => {
     });
   });
 
-  it('CheckShouldWait routes shouldWait=true through PrepareWaitSeconds, otherwise straight to InvokeRCAAnalyzer', () => {
-    const choice = harness.definition.States.CheckShouldWait;
+  it('CheckIsNewGroup routes isNewGroup=true to InvokeRCAAnalyzer, otherwise to RecordSuppressed', () => {
+    const choice = harness.definition.States.CheckIsNewGroup;
     expect(choice.Type).toBe('Choice');
-    expect(choice.Default).toBe('InvokeRCAAnalyzer');
+    expect(choice.Default).toBe('RecordSuppressed');
     expect(choice.Choices).toContainEqual({
-      Variable: '$.shouldWait',
+      Variable: '$.isNewGroup',
       BooleanEquals: true,
-      Next: 'PrepareWaitSeconds',
+      Next: 'InvokeRCAAnalyzer',
     });
   });
 
-  it('PrepareWaitSeconds sets the default 120s grouping window and chains into WaitForGroupWindow', () => {
-    const prep = harness.definition.States.PrepareWaitSeconds;
-    expect(prep.Type).toBe('Pass');
-    expect(prep.Next).toBe('WaitForGroupWindow');
-    expect(prep.Parameters.waitSeconds).toBe(120);
-    expect(prep.Parameters['groupId.$']).toBe('$.groupId');
-    expect(prep.Parameters['alarms.$']).toBe('$.alarms');
-    expect(prep.Parameters['shouldWait.$']).toBe('$.shouldWait');
-    expect(prep.Parameters['waitUntil.$']).toBe('$.waitUntil');
-  });
-
-  it('WaitForGroupWindow waits using SecondsPath and then invokes the RCA analyzer', () => {
-    const wait = harness.definition.States.WaitForGroupWindow;
-    expect(wait.Type).toBe('Wait');
-    expect(wait.SecondsPath).toBe('$.waitSeconds');
-    expect(wait.Next).toBe('InvokeRCAAnalyzer');
+  it('RecordSuppressed is a terminal Pass marking the duplicate outcome', () => {
+    const state = harness.definition.States.RecordSuppressed;
+    expect(state.Type).toBe('Pass');
+    expect(state.End).toBe(true);
+    expect(state.Result.outcome).toBe('suppressed_duplicate');
   });
 
   it('CheckRCAStatus routes "completed" to InvokeFeishuNotifierComplete and any other status to InvokeFeishuNotifierPartial', () => {
@@ -424,8 +412,8 @@ describe('buildWorkflowDefinition - workflow path scenarios', () => {
       switch (stateName) {
         case 'CheckFiltered':
           return 'InvokeAlarmGrouper'; // not filtered
-        case 'CheckShouldWait':
-          return 'InvokeRCAAnalyzer'; // no waiting
+        case 'CheckIsNewGroup':
+          return 'InvokeRCAAnalyzer'; // owner runs RCA immediately
         case 'CheckRCAStatus':
           return 'InvokeFeishuNotifierComplete'; // completed
         case 'CheckNotificationResult':
@@ -439,7 +427,7 @@ describe('buildWorkflowDefinition - workflow path scenarios', () => {
       'InvokeAlarmRouter',
       'CheckFiltered',
       'InvokeAlarmGrouper',
-      'CheckShouldWait',
+      'CheckIsNewGroup',
       'InvokeRCAAnalyzer',
       'CheckRCAStatus',
       'InvokeFeishuNotifierComplete',
@@ -448,26 +436,18 @@ describe('buildWorkflowDefinition - workflow path scenarios', () => {
     ]);
   });
 
-  it('grouping wait path: shouldWait=true routes through PrepareWaitSeconds → WaitForGroupWindow → InvokeRCAAnalyzer', () => {
+  it('dedup path: isNewGroup=false (joined active group) terminates at RecordSuppressed without invoking the RCA analyzer', () => {
     const path = tracePath('InvokeAlarmGrouper', (stateName) => {
       switch (stateName) {
-        case 'CheckShouldWait':
-          return 'PrepareWaitSeconds';
-        case 'CheckRCAStatus':
-          return 'InvokeFeishuNotifierComplete';
-        case 'CheckNotificationResult':
-          return 'RecordSuccess';
+        case 'CheckIsNewGroup':
+          return 'RecordSuppressed';
         default:
           throw new Error(`Unhandled choice: ${stateName}`);
       }
     });
 
-    // The wait-bearing prefix must include both PrepareWaitSeconds and WaitForGroupWindow.
-    expect(path).toEqual(
-      expect.arrayContaining(['PrepareWaitSeconds', 'WaitForGroupWindow', 'InvokeRCAAnalyzer'])
-    );
-    expect(path.indexOf('PrepareWaitSeconds')).toBeLessThan(path.indexOf('WaitForGroupWindow'));
-    expect(path.indexOf('WaitForGroupWindow')).toBeLessThan(path.indexOf('InvokeRCAAnalyzer'));
+    expect(path).toEqual(['InvokeAlarmGrouper', 'CheckIsNewGroup', 'RecordSuppressed']);
+    expect(path).not.toContain('InvokeRCAAnalyzer');
   });
 
   it('filter / reject path: filtered alarms terminate at RecordFiltered without invoking grouper or analyzer', () => {

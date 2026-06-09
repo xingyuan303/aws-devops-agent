@@ -125,8 +125,8 @@ describe('AlarmGrouper Lambda handler', () => {
       expect(result.groupId).toBe('existing-group-id');
       expect(result.alarms).toHaveLength(2);
       expect(result.isNewGroup).toBe(false);
-      expect(result.shouldWait).toBe(true);
-      expect(result.waitUntil).toBe('2024-01-15T10:01:00.000Z');
+      expect(result.shouldWait).toBe(false);
+      expect(result.suppressed).toBe(true);
     });
   });
 

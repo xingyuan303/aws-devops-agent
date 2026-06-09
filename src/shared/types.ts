@@ -107,6 +107,11 @@ export interface AlarmGrouperOutput {
   isNewGroup: boolean;
   shouldWait: boolean;
   waitUntil?: string;
+  /**
+   * True when the alarm joined an existing active group and was suppressed as a
+   * duplicate within the resource dedup window (no new investigation is run).
+   */
+  suppressed?: boolean;
 }
 
 // -----------------------------------------------------------------------------
