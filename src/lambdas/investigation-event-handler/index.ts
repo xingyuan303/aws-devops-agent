@@ -166,6 +166,7 @@ interface PendingRecord {
   groupId: string;
   alarms: AlarmRouterOutput[];
   taskId?: string;     // populated after phase 1
+  status?: string;     // current record status (used for mitigation-card dedup)
 }
 
 /**
@@ -217,6 +218,7 @@ async function findPendingByTimeWindow(eventTime: string): Promise<PendingRecord
     groupId: chosen.groupId,
     alarms: Array.isArray(chosen.alarms) ? (chosen.alarms as AlarmRouterOutput[]) : [],
     taskId: chosen.taskId,
+    status: chosen.status,
   };
 }
 
@@ -257,6 +259,7 @@ async function findRecordByTaskId(
       groupId: chosen.groupId,
       alarms: Array.isArray(chosen.alarms) ? (chosen.alarms as AlarmRouterOutput[]) : [],
       taskId: chosen.taskId,
+      status: chosen.status,
     };
   }
 
@@ -1098,6 +1101,24 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
       { taskId: eventTaskId }
     );
     await emitMetric('MitigationEventUnmatched', 1);
+    return;
+  }
+
+  // Idempotency guard: the DevOps Agent can re-emit "Mitigation Completed"
+  // for the same task several times (observed ~2 min apart). Dispatch only one
+  // mitigation card per task — if this record already reached a terminal
+  // mitigation status, a card was already sent; skip the duplicate.
+  if (record.status === 'mitigation_completed' || record.status === 'mitigation_failed') {
+    console.log(
+      JSON.stringify({
+        level: 'INFO',
+        message: 'Mitigation card already dispatched for task; skipping duplicate event',
+        taskId: eventTaskId,
+        recordStatus: record.status,
+        detailType,
+      })
+    );
+    await emitMetric('MitigationEventDuplicateSkipped', 1);
     return;
   }
 
