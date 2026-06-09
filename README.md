@@ -287,7 +287,12 @@ npx cdk deploy --all -c forwardFromRegions=us-west-2,eu-central-1 \
   "rcaTimeout": 300,                    // RCA 超时（秒）
   "retryPolicy": {"maxRetries": 3, "initialDelay": 5, "backoffMultiplier": 2},
   "groupingWindow": 120,                // 告警聚合窗口（秒）
-  "retentionDays": 90                   // 记录保留天数
+  "retentionDays": 90,                  // 记录保留天数
+  "frequencyCap": {                     // 按告警名每日限频（可选，默认关）
+    "enabled": false,
+    "maxPerDay": 3,
+    "utcOffsetHours": 8
+  }
 }
 ```
 
@@ -375,6 +380,23 @@ aws ssm put-parameter --region us-east-1 \
   ]
 }
 ```
+
+#### 按告警名限频(每日调查上限,可选,默认关)
+
+防止同一个告警名一天内反复触发调查刷屏。开启后,**同一告警名每个自然日只触发前 N 次调查,超出的被抑制**(记 `filterReason=frequency_cap`,不进聚合/调查)。
+
+```json
+{
+  "frequencyCap": { "enabled": true, "maxPerDay": 3, "utcOffsetHours": 8 }
+}
+```
+
+- `enabled`:开关,**默认 `false`**——不配或为 `false` 时此功能完全不生效(对未启用的部署零影响)。
+- `maxPerDay`:每个告警名每天最多触发几次调查;**第 `maxPerDay+1` 次起抑制**(例:3 = 当天前 3 次正常调查,第 4 次起不再触发)。
+- `utcOffsetHours`:自然日按哪个时区"零点"清零,`8` = UTC+8(北京)。改这个值即可换时区,**热加载生效,无需重新部署**。
+- 计数按**告警名**(跨资源同名告警合并计数);与"同资源 2 分钟聚合"相互独立。
+- 容错:计数存储不可用时**放行**(宁可多发,不漏发)。
+- 被抑制的告警会计入 `AlarmsFiltered` 自定义指标,可在 CloudWatch 观察。
 
 #### 筛选规则速查
 

@@ -19,6 +19,11 @@ export const DEFAULT_CONFIG: SystemConfig = {
   },
   groupingWindow: 120,
   retentionDays: 90,
+  frequencyCap: {
+    enabled: false,
+    maxPerDay: 3,
+    utcOffsetHours: 8,
+  },
 };
 
 /** Cache TTL in milliseconds (5 minutes). */
@@ -101,6 +106,28 @@ export function validateConfig(config: unknown): string[] {
     }
     if (typeof rp.backoffMultiplier !== 'number' || rp.backoffMultiplier <= 0) {
       errors.push('retryPolicy.backoffMultiplier must be a positive number');
+    }
+  }
+
+  // frequencyCap is optional; validate only when present
+  if (cfg.frequencyCap !== undefined) {
+    if (typeof cfg.frequencyCap !== 'object' || cfg.frequencyCap === null) {
+      errors.push('frequencyCap must be an object when present');
+    } else {
+      const fc = cfg.frequencyCap as Record<string, unknown>;
+      if (typeof fc.enabled !== 'boolean') {
+        errors.push('frequencyCap.enabled must be a boolean');
+      }
+      if (typeof fc.maxPerDay !== 'number' || fc.maxPerDay <= 0) {
+        errors.push('frequencyCap.maxPerDay must be a positive number');
+      }
+      if (
+        typeof fc.utcOffsetHours !== 'number' ||
+        fc.utcOffsetHours < -12 ||
+        fc.utcOffsetHours > 14
+      ) {
+        errors.push('frequencyCap.utcOffsetHours must be a number between -12 and 14');
+      }
     }
   }
 

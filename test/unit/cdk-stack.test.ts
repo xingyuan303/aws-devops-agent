@@ -63,8 +63,22 @@ describe('CDK Stack', () => {
       });
     });
 
-    it('should have exactly 5 DynamoDB tables', () => {
-      template.resourceCountIs('AWS::DynamoDB::Table', 5);
+    it('should create FrequencyCap table keyed by alarmName + dayBucket', () => {
+      template.hasResourceProperties('AWS::DynamoDB::Table', {
+        KeySchema: Match.arrayWith([
+          Match.objectLike({ AttributeName: 'alarmName', KeyType: 'HASH' }),
+          Match.objectLike({ AttributeName: 'dayBucket', KeyType: 'RANGE' }),
+        ]),
+        BillingMode: 'PAY_PER_REQUEST',
+        TimeToLiveSpecification: Match.objectLike({
+          AttributeName: 'ttl',
+          Enabled: true,
+        }),
+      });
+    });
+
+    it('should have exactly 6 DynamoDB tables', () => {
+      template.resourceCountIs('AWS::DynamoDB::Table', 6);
     });
   });
 

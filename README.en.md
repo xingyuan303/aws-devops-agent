@@ -282,7 +282,12 @@ Path: `/cloudwatch-alarm-auto-rca/config`
   "rcaTimeout": 300,                    // RCA timeout in seconds
   "retryPolicy": {"maxRetries": 3, "initialDelay": 5, "backoffMultiplier": 2},
   "groupingWindow": 120,                // alarm aggregation window in seconds
-  "retentionDays": 90                   // record retention
+  "retentionDays": 90,                  // record retention
+  "frequencyCap": {                     // per-alarm-name daily cap (optional, off by default)
+    "enabled": false,
+    "maxPerDay": 3,
+    "utcOffsetHours": 8
+  }
 }
 ```
 
@@ -367,6 +372,23 @@ Filter by the **resource's AWS tag**. alarm-router only looks up tags when a tag
   ]
 }
 ```
+
+#### Per-alarm-name daily frequency cap (optional, off by default)
+
+Prevents a single alarm name from repeatedly triggering investigations and flooding the channel all day. When enabled, **only the first N occurrences of an alarm name per calendar day trigger an investigation; the rest are suppressed** (logged with `filterReason=frequency_cap`, never reaching grouping/RCA).
+
+```json
+{
+  "frequencyCap": { "enabled": true, "maxPerDay": 3, "utcOffsetHours": 8 }
+}
+```
+
+- `enabled`: master switch, **defaults to `false`** — when absent or false the feature is fully inert (zero impact on deployments that don't opt in).
+- `maxPerDay`: max investigations per alarm name per day; the **(maxPerDay + 1)-th onward is suppressed** (e.g. 3 = first 3 investigate, 4th+ suppressed).
+- `utcOffsetHours`: UTC offset defining when the calendar day resets, `8` = UTC+8. Change it to switch timezone — **hot-reloaded, no redeploy**.
+- Counting is keyed by **alarm name** (same name across resources shares one counter); independent of the per-resource 2-minute aggregation.
+- Fails open: if the counter store is unavailable, the alarm passes (prefer over-notifying to dropping).
+- Suppressed alarms increment the `AlarmsFiltered` custom metric for CloudWatch visibility.
 
 #### Filter rule reference
 

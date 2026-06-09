@@ -413,6 +413,20 @@ export interface RetryPolicy {
 }
 
 /**
+ * Per-alarm-name daily frequency cap. Optional and disabled by default — when
+ * absent or `enabled` is false the cap is never applied, so deployments that
+ * don't opt in see no behavior change.
+ */
+export interface FrequencyCapConfig {
+  /** Master switch. Default off. */
+  enabled: boolean;
+  /** Max investigations triggered per alarm name per calendar day. */
+  maxPerDay: number;
+  /** UTC offset (hours) defining when the calendar day resets, e.g. 8 = UTC+8 (Beijing). */
+  utcOffsetHours: number;
+}
+
+/**
  * System configuration stored in SSM Parameter Store.
  */
 export interface SystemConfig {
@@ -425,4 +439,6 @@ export interface SystemConfig {
   retryPolicy: RetryPolicy;
   groupingWindow: number;
   retentionDays: number;
+  /** Optional per-alarm-name daily frequency cap (disabled by default). */
+  frequencyCap?: FrequencyCapConfig;
 }

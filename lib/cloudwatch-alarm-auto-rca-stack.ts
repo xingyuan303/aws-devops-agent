@@ -95,6 +95,18 @@ export class CloudwatchAlarmAutoRcaStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Per-alarm-name daily frequency-cap counter. Used only when the
+    // `frequencyCap` feature is enabled in SSM config; the table is always
+    // created but stays empty otherwise. Counts are keyed by (alarmName,
+    // dayBucket) and auto-expire via TTL.
+    const frequencyCapTable = new dynamodb.Table(this, 'FrequencyCapTable', {
+      partitionKey: { name: 'alarmName', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'dayBucket', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Chat investigation mapping table — links a DevOps Agent INVESTIGATION
     // task back to the originating Feishu chat so we can push the result
     // when the EventBridge "Investigation Completed" event arrives.
@@ -212,6 +224,7 @@ export class CloudwatchAlarmAutoRcaStack extends cdk.Stack {
       ALARM_GROUP_TABLE_NAME: alarmGroupTable.tableName,
       DEAD_LETTER_TABLE_NAME: deadLetterTable.tableName,
       CHAT_INVESTIGATION_MAPPING_TABLE_NAME: chatInvestigationMappingTable.tableName,
+      FREQUENCY_CAP_TABLE_NAME: frequencyCapTable.tableName,
       SSM_CONFIG_PATH: '/cloudwatch-alarm-auto-rca/config',
     };
 
@@ -325,6 +338,8 @@ export class CloudwatchAlarmAutoRcaStack extends cdk.Stack {
     // DynamoDB permissions
     alarmGroupTable.grantReadWriteData(alarmGrouperFn);
     workflowExecutionTable.grantReadWriteData(alarmRouterFn);
+    // Per-alarm-name daily frequency-cap counter (atomic increments)
+    frequencyCapTable.grantReadWriteData(alarmRouterFn);
     workflowExecutionTable.grantReadWriteData(rcaAnalyzerFn); // 写 pending 记录
     workflowExecutionTable.grantReadWriteData(investigationEventHandlerFn); // Scan + Update
     deadLetterTable.grantWriteData(feishuNotifierFn);

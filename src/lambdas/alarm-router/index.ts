@@ -4,6 +4,7 @@ import { ConfigManager } from '../../shared/config-manager';
 import { parseAlarmEvent } from './parser';
 import { shouldProcessAlarm } from './filter';
 import { fetchResourceTags } from '../../shared/resource-tags';
+import { checkFrequencyCap } from './frequency-cap';
 
 const METRIC_NAMESPACE = 'CloudWatchAlarmAutoRCA';
 
@@ -105,6 +106,34 @@ export const handler = async (event: AlarmRouterInput): Promise<AlarmRouterOutpu
 
     await emitMetrics(1, 1);
     return parsedAlarm;
+  }
+
+  // Step 4b: Per-alarm-name daily frequency cap (opt-in via SSM config).
+  // Only the first `maxPerDay` occurrences of an alarm name per calendar day
+  // trigger an investigation; further occurrences are suppressed.
+  if (config.frequencyCap?.enabled) {
+    const { capped, count } = await checkFrequencyCap(
+      parsedAlarm.alarmName,
+      config.frequencyCap
+    );
+    if (capped) {
+      parsedAlarm.filtered = true;
+      parsedAlarm.filterReason = 'frequency_cap';
+
+      console.log(JSON.stringify({
+        level: 'INFO',
+        message: 'Alarm suppressed by daily frequency cap',
+        correlationId,
+        alarmName: parsedAlarm.alarmName,
+        filterReason: 'frequency_cap',
+        count,
+        maxPerDay: config.frequencyCap.maxPerDay,
+        timestamp: new Date().toISOString(),
+      }));
+
+      await emitMetrics(1, 1);
+      return parsedAlarm;
+    }
   }
 
   // Step 5: Alarm passed all checks
