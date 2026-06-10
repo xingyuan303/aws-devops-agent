@@ -271,12 +271,32 @@ async function findRecordByTaskId(
 
 async function fetchSummaryMarkdown(
   executionId: string,
-  recordType: 'investigation_summary_md' | 'mitigation_summary_md'
+  recordType: 'investigation_summary_md' | 'mitigation_summary_md',
+  recordId?: string
 ): Promise<string> {
   if (!AGENT_SPACE_ID) {
     console.warn('[InvestigationEventHandler] AGENT_SPACE_ID not configured; skip journal fetch');
     return '';
   }
+
+  const extract = (content: unknown): string | undefined => {
+    if (typeof content === 'string') return content;
+    if (content && typeof content === 'object') {
+      const c = content as Record<string, unknown>;
+      if (typeof c.text === 'string') return c.text;
+      if (typeof c.markdown === 'string') return c.markdown as string;
+      if (typeof c.body === 'string') return c.body as string;
+    }
+    return undefined;
+  };
+
+  // When the event gives us the exact summary record id, match by it and list
+  // ALL record types (so a renamed/unexpected recordType still resolves). The
+  // query stays scoped to THIS executionId, and we only ever return the record
+  // whose recordId equals the event's summary_record_id — so it can never pull
+  // a different investigation's content. Falls back to the recordType scan if
+  // the exact record isn't found.
+  const matchById = !!recordId;
 
   let nextToken: string | undefined;
   const summaryParts: string[] = [];
@@ -290,24 +310,25 @@ async function fetchSummaryMarkdown(
         executionId,
         limit: 100,
         nextToken,
-        recordType,
+        ...(matchById ? {} : { recordType }),
       })
     );
     for (const r of resp.records ?? []) {
-      if (!r.content) continue;
-      let text: string | undefined;
-      if (typeof r.content === 'string') text = r.content;
-      else if (typeof r.content === 'object' && r.content !== null) {
-        const c = r.content as Record<string, unknown>;
-        if (typeof c.text === 'string') text = c.text;
-        else if (typeof c.markdown === 'string') text = c.markdown as string;
-        else if (typeof c.body === 'string') text = c.body as string;
+      if (matchById && r.recordId !== recordId) continue;
+      const text = extract(r.content);
+      if (text) {
+        summaryParts.push(text);
+        if (matchById) return text; // exact record found — return immediately
       }
-      if (text) summaryParts.push(text);
     }
     nextToken = resp.nextToken;
     pageCount++;
   } while (nextToken && pageCount < MAX_PAGES);
+
+  // Exact-id match requested but not found → fall back to the recordType scan.
+  if (matchById && summaryParts.length === 0) {
+    return fetchSummaryMarkdown(executionId, recordType);
+  }
 
   return summaryParts.join('\n\n');
 }
@@ -967,7 +988,7 @@ async function handleInvestigationEvent(event: InvestigationEvent): Promise<void
   let markdown = '';
   if (executionIdFromEvent) {
     try {
-      markdown = await fetchSummaryMarkdown(executionIdFromEvent, 'investigation_summary_md');
+      markdown = await fetchSummaryMarkdown(executionIdFromEvent, 'investigation_summary_md', event.detail.data.summary_record_id);
     } catch (err) {
       console.warn('[InvestigationEventHandler] fetchSummaryMarkdown(investigation) failed', err);
     }
@@ -1187,7 +1208,7 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
   let markdown = '';
   if (mitigationExecutionId) {
     try {
-      markdown = await fetchSummaryMarkdown(mitigationExecutionId, 'mitigation_summary_md');
+      markdown = await fetchSummaryMarkdown(mitigationExecutionId, 'mitigation_summary_md', event.detail.data.summary_record_id);
     } catch (err) {
       console.warn(
         '[InvestigationEventHandler] fetchSummaryMarkdown(mitigation) failed',
