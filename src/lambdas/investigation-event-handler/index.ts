@@ -302,6 +302,12 @@ async function fetchSummaryMarkdown(
   const summaryParts: string[] = [];
   let pageCount = 0;
   const MAX_PAGES = 5;
+  // Diagnostics: capture what ListJournalRecords actually returned so we can
+  // tell *why* a fetch came back empty (0 records vs. recordId/type miss vs.
+  // records present but no extractable content).
+  let totalRecordsListed = 0;
+  const recordTypeCounts: Record<string, number> = {};
+  let requestedRecordIdSeen = false;
 
   do {
     const resp = await devopsClient.send(
@@ -314,23 +320,53 @@ async function fetchSummaryMarkdown(
       })
     );
     for (const r of resp.records ?? []) {
+      totalRecordsListed++;
+      const t = r.recordType ?? 'unknown';
+      recordTypeCounts[t] = (recordTypeCounts[t] ?? 0) + 1;
+      if (matchById && r.recordId === recordId) requestedRecordIdSeen = true;
       if (matchById && r.recordId !== recordId) continue;
       const text = extract(r.content);
       if (text) {
         summaryParts.push(text);
-        if (matchById) return text; // exact record found — return immediately
+        if (matchById) {
+          console.log(JSON.stringify({
+            level: 'INFO',
+            message: 'fetchSummaryMarkdown: matched by recordId',
+            executionId, recordType, recordId, contentLen: text.length,
+          }));
+          return text; // exact record found — return immediately
+        }
       }
     }
     nextToken = resp.nextToken;
     pageCount++;
   } while (nextToken && pageCount < MAX_PAGES);
 
+  const result = summaryParts.join('\n\n');
+
+  // Always log what the journal listing yielded — this is the key signal for
+  // diagnosing empty cards (e.g. totalRecordsListed=0 means the execution has
+  // no journal records at all in this agent space).
+  console.log(JSON.stringify({
+    level: result ? 'INFO' : 'WARN',
+    message: 'fetchSummaryMarkdown result',
+    executionId,
+    recordType,
+    requestedRecordId: recordId ?? null,
+    matchById,
+    requestedRecordIdSeen: matchById ? requestedRecordIdSeen : undefined,
+    totalRecordsListed,
+    recordTypeCounts,
+    pagesScanned: pageCount,
+    resultLen: result.length,
+  }));
+
   // Exact-id match requested but not found → fall back to the recordType scan.
   if (matchById && summaryParts.length === 0) {
     return fetchSummaryMarkdown(executionId, recordType);
   }
 
-  return summaryParts.join('\n\n');
+  return result;
 }
 
 /**
