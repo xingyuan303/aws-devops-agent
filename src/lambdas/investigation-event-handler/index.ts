@@ -1197,6 +1197,51 @@ async function bumpEmptyAttempts(rec: PendingRecord): Promise<number> {
   }
 }
 
+/**
+ * Resolves the mitigation execution and fetches its summary markdown, with a
+ * short in-handler retry (~15s). The Mitigation Completed event can fire a few
+ * seconds before the mitigation execution / summary journal is queryable; these
+ * quick retries catch fast-settling content so we dispatch promptly instead of
+ * deferring to the next event (~2 min later). If still empty after the quick
+ * retries, the caller's defer logic waits for a later event.
+ */
+async function resolveMitigationMarkdown(
+  taskId: string,
+  summaryRecordId?: string
+): Promise<{ markdown: string; mitigationExecutionId?: string }> {
+  const RETRIES = 3;
+  const DELAY_MS = 5000;
+  let mitigationExecutionId: string | undefined;
+  let markdown = '';
+
+  for (let attempt = 1; attempt <= RETRIES; attempt++) {
+    mitigationExecutionId = await findMitigationExecutionId(taskId);
+    if (mitigationExecutionId) {
+      try {
+        markdown = await fetchSummaryMarkdown(
+          mitigationExecutionId,
+          'mitigation_summary_md',
+          summaryRecordId
+        );
+      } catch (err) {
+        console.warn('[InvestigationEventHandler] fetchSummaryMarkdown(mitigation) failed', err);
+      }
+    }
+    if (markdown.trim().length > 0) break; // got content → stop retrying
+    if (attempt < RETRIES) {
+      console.log(JSON.stringify({
+        level: 'INFO',
+        message: 'Phase-2 summary not ready; quick retry',
+        taskId,
+        attempt,
+        mitigationExecutionId: mitigationExecutionId ?? null,
+      }));
+      await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
+    }
+  }
+  return { markdown, mitigationExecutionId };
+}
+
 // -----------------------------------------------------------------------------
 // Phase 2 handler
 // -----------------------------------------------------------------------------
@@ -1258,29 +1303,14 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
   // ops1 (investigation) execution,不是 mitigation execution。
   // mitigation_summary_md 只存在于 agentType=mitigation 的 execution journal 里,
   // 所以必须先 ListExecutions(taskId) 找出真正的 mitigation execution。
-  const mitigationExecutionId = await findMitigationExecutionId(eventTaskId);
-
-  // Fetch the mitigation summary FIRST — the dedup claim below is content-aware:
-  // we only claim the card slot once we actually have content (or have exhausted
-  // retries), so an early Mitigation Completed event that arrives before the
-  // agent has published the summary doesn't lock in an empty card. A later
-  // (settled) event can still deliver the content.
-  let markdown = '';
-  if (mitigationExecutionId) {
-    try {
-      markdown = await fetchSummaryMarkdown(mitigationExecutionId, 'mitigation_summary_md', event.detail.data.summary_record_id);
-    } catch (err) {
-      console.warn(
-        '[InvestigationEventHandler] fetchSummaryMarkdown(mitigation) failed',
-        err
-      );
-    }
-  } else {
-    console.warn(
-      '[InvestigationEventHandler] Could not resolve mitigation execution for task',
-      { taskId: eventTaskId }
-    );
-  }
+  // Resolve the mitigation execution + summary, with a short in-handler retry
+  // (~15s) to catch content that settles a few seconds after the event. If it's
+  // still empty after the quick retries, the content-aware defer logic below
+  // waits for a later event.
+  const { markdown, mitigationExecutionId } = await resolveMitigationMarkdown(
+    eventTaskId,
+    event.detail.data.summary_record_id
+  );
 
   console.log(
     JSON.stringify({
