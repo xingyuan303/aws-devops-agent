@@ -1162,6 +1162,41 @@ async function releaseMitigationCardSlot(rec: PendingRecord): Promise<void> {
   }
 }
 
+/**
+ * Max number of empty Mitigation Completed events to tolerate before giving up
+ * and dispatching a (content-less) fallback card. The agent emits several
+ * Mitigation Completed events per task (~2 min apart); deferring the empty ones
+ * lets a later, settled event deliver the actual content, while this cap
+ * guarantees the user still gets a card if content never materializes.
+ */
+const MAX_EMPTY_MITIGATION_ATTEMPTS = 3;
+
+/**
+ * Atomically increments the per-record empty-fetch counter and returns the new
+ * value. Used to bound how long we defer dispatch while waiting for the agent
+ * to publish the mitigation summary. Fails toward dispatching (returns the cap)
+ * so a DynamoDB hiccup never permanently withholds the card.
+ */
+async function bumpEmptyAttempts(rec: PendingRecord): Promise<number> {
+  const tableName = process.env.WORKFLOW_EXECUTION_TABLE_NAME;
+  if (!tableName) return MAX_EMPTY_MITIGATION_ATTEMPTS;
+  try {
+    const r = await getDocClient().send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { executionId: rec.executionId, createdAt: rec.createdAt },
+        UpdateExpression: 'ADD mitigationEmptyAttempts :one',
+        ExpressionAttributeValues: { ':one': 1 },
+        ReturnValues: 'UPDATED_NEW',
+      })
+    );
+    return Number(r.Attributes?.mitigationEmptyAttempts ?? MAX_EMPTY_MITIGATION_ATTEMPTS);
+  } catch (err) {
+    console.warn('[InvestigationEventHandler] bumpEmptyAttempts failed, forcing dispatch', err);
+    return MAX_EMPTY_MITIGATION_ATTEMPTS;
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Phase 2 handler
 // -----------------------------------------------------------------------------
@@ -1225,22 +1260,11 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
   // 所以必须先 ListExecutions(taskId) 找出真正的 mitigation execution。
   const mitigationExecutionId = await findMitigationExecutionId(eventTaskId);
 
-  // Per-task dedup: the agent may emit multiple Mitigation Completed events for
-  // one task (each a separate execution, ~2 min apart). Only the first event to
-  // atomically claim the slot produces a card.
-  if (!(await claimMitigationCardSlot(record))) {
-    console.log(
-      JSON.stringify({
-        level: 'INFO',
-        message: 'Mitigation card already sent for task; skipping duplicate',
-        taskId: eventTaskId,
-        detailType,
-      })
-    );
-    await emitMetric('MitigationCardDeduped', 1);
-    return;
-  }
-
+  // Fetch the mitigation summary FIRST — the dedup claim below is content-aware:
+  // we only claim the card slot once we actually have content (or have exhausted
+  // retries), so an early Mitigation Completed event that arrives before the
+  // agent has published the summary doesn't lock in an empty card. A later
+  // (settled) event can still deliver the content.
   let markdown = '';
   if (mitigationExecutionId) {
     try {
@@ -1267,6 +1291,44 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
       markdownLen: markdown.length,
     })
   );
+
+  // Content-aware dedup: if the summary came back empty, defer — the agent emits
+  // several Mitigation Completed events per task, and a later (settled) one
+  // usually carries the content. Only after MAX_EMPTY_MITIGATION_ATTEMPTS do we
+  // give up and dispatch a content-less fallback card so the user still gets one.
+  const hasContent = markdown.trim().length > 0;
+  if (!hasContent) {
+    const attempts = await bumpEmptyAttempts(record);
+    if (attempts < MAX_EMPTY_MITIGATION_ATTEMPTS) {
+      console.log(JSON.stringify({
+        level: 'INFO',
+        message: 'Phase-2 summary empty; deferring for a later event',
+        taskId: eventTaskId,
+        attempts,
+      }));
+      await emitMetric('MitigationEmptyDeferred', 1);
+      return;
+    }
+    console.log(JSON.stringify({
+      level: 'WARN',
+      message: 'Phase-2 summary still empty after max attempts; dispatching fallback card',
+      taskId: eventTaskId,
+      attempts,
+    }));
+  }
+
+  // Claim the card slot now that we have content (or exhausted retries) so
+  // exactly one card is dispatched per task.
+  if (!(await claimMitigationCardSlot(record))) {
+    console.log(JSON.stringify({
+      level: 'INFO',
+      message: 'Mitigation card already sent for task; skipping duplicate',
+      taskId: eventTaskId,
+      detailType,
+    }));
+    await emitMetric('MitigationCardDeduped', 1);
+    return;
+  }
 
   const rcaReport = buildMitigationReport({ record, event, markdown });
   // 把真正解析到的 mitigation execution id 写到 RCAReport 上,飞书卡片
