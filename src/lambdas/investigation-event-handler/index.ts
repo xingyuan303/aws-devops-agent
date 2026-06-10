@@ -166,7 +166,6 @@ interface PendingRecord {
   groupId: string;
   alarms: AlarmRouterOutput[];
   taskId?: string;     // populated after phase 1
-  status?: string;     // current record status (used for mitigation-card dedup)
 }
 
 /**
@@ -218,7 +217,6 @@ async function findPendingByTimeWindow(eventTime: string): Promise<PendingRecord
     groupId: chosen.groupId,
     alarms: Array.isArray(chosen.alarms) ? (chosen.alarms as AlarmRouterOutput[]) : [],
     taskId: chosen.taskId,
-    status: chosen.status,
   };
 }
 
@@ -259,7 +257,6 @@ async function findRecordByTaskId(
       groupId: chosen.groupId,
       alarms: Array.isArray(chosen.alarms) ? (chosen.alarms as AlarmRouterOutput[]) : [],
       taskId: chosen.taskId,
-      status: chosen.status,
     };
   }
 
@@ -1048,6 +1045,67 @@ async function handleInvestigationEvent(event: InvestigationEvent): Promise<void
 }
 
 // -----------------------------------------------------------------------------
+// Mitigation-card dedup (atomic claim / release)
+// -----------------------------------------------------------------------------
+
+/**
+ * Atomically claims the "mitigation card sent" slot on this task's record so
+ * only the FIRST Mitigation Completed event dispatches a card.
+ *
+ * The DevOps Agent may emit several Mitigation Completed events for one task
+ * (it re-generates the mitigation plan multiple times, each a separate
+ * execution). Without this guard phase-2 would send one card per event.
+ *
+ * Returns true if this caller won the slot (should dispatch), false if a card
+ * was already sent (skip). Fails OPEN on unexpected errors so a transient
+ * DynamoDB issue never drops the only card.
+ */
+async function claimMitigationCardSlot(rec: PendingRecord): Promise<boolean> {
+  const tableName = process.env.WORKFLOW_EXECUTION_TABLE_NAME;
+  if (!tableName) return true; // no store to dedup against → prefer sending
+
+  try {
+    await getDocClient().send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { executionId: rec.executionId, createdAt: rec.createdAt },
+        UpdateExpression: 'SET mitigationCardSent = :true',
+        ConditionExpression: 'attribute_not_exists(mitigationCardSent)',
+        ExpressionAttributeValues: { ':true': true },
+      })
+    );
+    return true;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'ConditionalCheckFailedException') {
+      return false; // a card was already sent for this task → skip duplicate
+    }
+    console.warn('[InvestigationEventHandler] claimMitigationCardSlot error, failing open', err);
+    return true;
+  }
+}
+
+/**
+ * Releases the mitigation-card slot (removes the flag) so a later Mitigation
+ * event can retry. Called only when dispatch failed after a successful claim,
+ * to avoid permanently losing the card. Best-effort.
+ */
+async function releaseMitigationCardSlot(rec: PendingRecord): Promise<void> {
+  const tableName = process.env.WORKFLOW_EXECUTION_TABLE_NAME;
+  if (!tableName) return;
+  try {
+    await getDocClient().send(
+      new UpdateCommand({
+        TableName: tableName,
+        Key: { executionId: rec.executionId, createdAt: rec.createdAt },
+        UpdateExpression: 'REMOVE mitigationCardSent',
+      })
+    );
+  } catch (err) {
+    console.warn('[InvestigationEventHandler] releaseMitigationCardSlot failed', err);
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Phase 2 handler
 // -----------------------------------------------------------------------------
 
@@ -1104,29 +1162,27 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
     return;
   }
 
-  // Idempotency guard: the DevOps Agent can re-emit "Mitigation Completed"
-  // for the same task several times (observed ~2 min apart). Dispatch only one
-  // mitigation card per task — if this record already reached a terminal
-  // mitigation status, a card was already sent; skip the duplicate.
-  if (record.status === 'mitigation_completed' || record.status === 'mitigation_failed') {
-    console.log(
-      JSON.stringify({
-        level: 'INFO',
-        message: 'Mitigation card already dispatched for task; skipping duplicate event',
-        taskId: eventTaskId,
-        recordStatus: record.status,
-        detailType,
-      })
-    );
-    await emitMetric('MitigationEventDuplicateSkipped', 1);
-    return;
-  }
-
   // EventBridge 的 metadata.execution_id 在 Mitigation* 事件里给的是
   // ops1 (investigation) execution,不是 mitigation execution。
   // mitigation_summary_md 只存在于 agentType=mitigation 的 execution journal 里,
   // 所以必须先 ListExecutions(taskId) 找出真正的 mitigation execution。
   const mitigationExecutionId = await findMitigationExecutionId(eventTaskId);
+
+  // Per-task dedup: the agent may emit multiple Mitigation Completed events for
+  // one task (each a separate execution, ~2 min apart). Only the first event to
+  // atomically claim the slot produces a card.
+  if (!(await claimMitigationCardSlot(record))) {
+    console.log(
+      JSON.stringify({
+        level: 'INFO',
+        message: 'Mitigation card already sent for task; skipping duplicate',
+        taskId: eventTaskId,
+        detailType,
+      })
+    );
+    await emitMetric('MitigationCardDeduped', 1);
+    return;
+  }
 
   let markdown = '';
   if (mitigationExecutionId) {
@@ -1183,6 +1239,8 @@ async function handleMitigationEvent(event: InvestigationEvent): Promise<void> {
   } catch (err) {
     console.error('[InvestigationEventHandler] Phase-2 dispatch failed', err);
     await emitMetric('MitigationCardDispatchFailed', 1);
+    // Release the slot so a subsequent Mitigation event can retry the card.
+    await releaseMitigationCardSlot(record);
   }
 }
 
